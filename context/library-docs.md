@@ -455,7 +455,7 @@ const dossier = dossierSchema.parse(JSON.parse(response.text ?? "{}"));
 
 **Rules:**
 
-- Never use Browserbase, Stagehand, Playwright, or Puppeteer for company research
+- Never use Browserbase, Stagehand, Playwright, or Puppeteer for Phase 1 company research
 - Do not parse raw HTML with regex; let Gemini URL Context handle public page content
 - Keep web research and structured synthesis as separate Gemini calls
 - Do not request structured JSON from the same call that uses `googleSearch` or `urlContext`
@@ -464,6 +464,30 @@ const dossier = dossierSchema.parse(JSON.parse(response.text ?? "{}"));
 - Always cache the final dossier in jobs.company_research
 - If web research returns empty — still run synthesis with job + profile only
 - yourEdge, gapsToAddress, and smartQuestions are the most valuable fields — never skip them
+
+### Browser-Agent Fallback
+
+Treat Gemini Search + URL Context as Phase 1. It preserves the original Browserbase user experience because the user only sees the final dossier and source links.
+
+If Phase 1 fails in real usage, add a browser worker instead of changing the Job Details UI or `jobs.company_research` schema:
+
+```typescript
+// Future fallback shape only — do not implement in Phase 1.
+type BrowserResearchResult = {
+  notes: string[];
+  screenshots?: string[];
+  sourceUrls: string[];
+};
+```
+
+Fallback rules:
+
+- Use a separate worker/service for browser sessions
+- Start with local or self-hosted Playwright + Gemini
+- Keep browser sessions out of long-running Next.js route handlers
+- Save the same dossier fields after synthesis
+- Consider Browserless, Steel, or Hyperbrowser only if local Playwright is too fragile or hard to scale
+- Do not add this fallback until there is evidence that Gemini URL Context is not enough for the current public-company-research workflow
 
 ---
 

@@ -427,6 +427,37 @@ Always split web research and structured JSON synthesis into separate Gemini cal
 
 ---
 
+## Browser-Agent Escape Hatch
+
+Gemini Search + URL Context is the Phase 1 implementation for company research. It should not break the original product intent because the UI and DB contract remain unchanged: every successful run saves the same `jobs.company_research` dossier shape with source URLs.
+
+Only introduce a browser-agent fallback if Phase 1 fails real usage in one of these ways:
+
+- Research is too thin for a meaningful percentage of normal company sites
+- Source URLs are missing or unreliable often enough that users cannot verify claims
+- Company sites require JavaScript interaction before public content is visible
+- Future scope adds visual inspection, live browsing, form filling, or auto-apply behavior
+
+Fallback architecture:
+
+```
+API route receives research request
+        ↓
+Queue or call a separate browser worker
+        ↓
+Worker launches Playwright Chromium
+        ↓
+Gemini guides navigation/extraction from page text or screenshots
+        ↓
+Gemini 3.5 Flash synthesizes the same dossier schema
+        ↓
+Worker saves jobs.company_research
+```
+
+Keep browser work out of long-running Next.js route handlers. Start with local/self-hosted Playwright + Gemini if escalation is needed. Use a managed browser provider such as Browserless, Steel, or Hyperbrowser only when local browser operations become too fragile or expensive to maintain.
+
+---
+
 ## Invariants
 
 Rules the AI agent must never violate:
@@ -438,7 +469,7 @@ Rules the AI agent must never violate:
 - No hardcoded hex values or raw Tailwind color classes in components — use CSS variables from ui-tokens.md.
 - Gemini web research failures are caught and logged to agent_logs, never thrown to crash the run.
 - Company research always returns a dossier — even if web research fails, Gemini 3.5 Flash synthesizes from company name, job description, and profile alone. Never return empty.
-- Do not add Browserbase, Stagehand, Playwright, or Puppeteer for company research unless the architecture is explicitly changed.
+- Do not add Browserbase, Stagehand, Playwright, or Puppeteer for Phase 1 company research. Only add a browser worker after the Browser-Agent Escape Hatch criteria are met.
 - Always scope InsForge queries to the current user_id — never query without a user filter.
 - Adzuna API always includes category=it-jobs — never search without this filter.
 - jobs.source is always 'search' or 'url' — never any other value.

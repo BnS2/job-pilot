@@ -115,6 +115,18 @@ Full width layout on all pages. No sidebar.
 - Dossier displayed on job details page
 - If company pages cannot be retrieved — Gemini 3.5 Flash generates the best dossier from company name, job description, and profile alone
 
+### Company Research Implementation Strategy
+
+Phase 1 intentionally replaces Browserbase + Stagehand with Gemini web research because the current product only needs public company research, source links, and a structured dossier. The user experience and stored data shape stay the same as the original Browserbase plan: the user clicks Research Company and receives `jobs.company_research` JSON with sources.
+
+If Phase 1 produces consistently thin research, misses source URLs, or future scope requires visual/interactive browsing, transition to a browser-agent worker without changing the UI contract:
+
+1. Add a separate Playwright + Gemini worker for page navigation, clicking, scrolling, screenshots, and extraction.
+2. Keep the same `jobs.company_research` dossier schema so Job Details and Dashboard do not need to be redesigned.
+3. Move to a managed browser provider such as Browserless, Steel, or Hyperbrowser only if local Playwright becomes too hard to operate or scale.
+
+Do not build the browser-agent fallback until evidence shows Gemini Search + URL Context is not enough for the current research workflow.
+
 ### Dashboard
 
 - Stats bar — 4 cards: Total Jobs Found, Avg. Match Rate, Companies Researched, Jobs This Week

@@ -355,6 +355,25 @@ Temperature: 0.4
 - Never loop over search results with additional Gemini calls
 - Cache final dossier in jobs.company_research and reuse it
 
+**Browser-agent fallback policy:**
+
+Phase 1 does not use browser automation. This is safe because the rest of the app only depends on the final `jobs.company_research` dossier schema, not on how the research was gathered.
+
+Only add a Playwright + Gemini browser worker if real usage proves Gemini Search + URL Context is not enough:
+
+- Too many normal company sites return thin or missing research
+- Source links are missing or not useful for verification
+- Public company content requires JavaScript interactions before it can be read
+- Product scope expands to visual inspection, live browser sessions, form filling, or auto-apply
+
+If fallback is needed, keep it as Feature 13B:
+
+- Add a separate worker/service, not a long-running Next.js route handler
+- Worker launches Playwright Chromium locally or in self-hosted infrastructure
+- Gemini guides navigation, page extraction, and screenshot interpretation as needed
+- Worker still saves the same 9-field `jobs.company_research` shape
+- Only move to Browserless, Steel, or Hyperbrowser after local Playwright proves operationally insufficient
+
 **PostHog event:** `company_researched` — { userId, jobId, company }
 
 ---
