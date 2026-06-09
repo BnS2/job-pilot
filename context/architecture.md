@@ -6,10 +6,10 @@
 | ------------------------------ | ------------------------ | ------------------------------------------------ |
 | Framework                      | Next.js 16 (App Router)  | Full stack framework                             |
 | Auth + DB + Storage + Realtime | InsForge                 | Entire backend                                   |
-| Cloud browser                  | Browserbase              | Company research — browsing company public pages |
-| AI browser control             | Stagehand                | Company page interaction and content extraction  |
+| Web research                   | Gemini 2.5 URL Context   | Reads public company pages and retrieved URLs     |
+| Web discovery                  | Gemini 2.5 Google Search | Finds official company pages with free grounding  |
 | Job Discovery                  | Adzuna API               | Job search and discovery                         |
-| AI model                       | OpenAI GPT-4o            | Matching, research synthesis, extraction         |
+| AI model                       | Gemini 3.5 Flash         | Matching, research synthesis, extraction         |
 | Analytics                      | PostHog                  | Event tracking and dashboard charts              |
 | PDF generation                 | @react-pdf/renderer      | Resume PDF rendering                             |
 | Styling                        | Tailwind CSS + shadcn/ui | UI components and styling                        |
@@ -56,10 +56,10 @@
 │       │   ├── generate/route.ts          → Generate base resume PDF from profile
 │       │   └── extract/route.ts           → Extract profile data from uploaded resume PDF
 ├── agent/
-│   ├── adzuna.ts                          → Adzuna API job discovery + GPT-4o scoring
-│   ├── research.ts                        → Company research — Browserbase + Stagehand + GPT-4o
-│   ├── matcher.ts                         → GPT-4o job matching logic
-│   ├── extractor.ts                       → GPT-4o job description extraction + structuring
+│   ├── adzuna.ts                          → Adzuna API job discovery + Gemini scoring
+│   ├── research.ts                        → Company research — Gemini Search + URL Context + synthesis
+│   ├── matcher.ts                         → Gemini job matching logic
+│   ├── extractor.ts                       → Gemini job description extraction + structuring
 │   └── types.ts                           → Agent-specific TypeScript types
 ├── actions/
 │   ├── profile.ts                         → Profile save + update
@@ -96,8 +96,7 @@
 ├── lib/
 │   ├── insforge-client.ts                 → InsForge browser client instance
 │   ├── insforge-server.ts                 → InsForge server client
-│   ├── browserbase.ts                     → Browserbase session creation + management
-│   ├── stagehand.ts                       → Stagehand initialisation with Browserbase session
+│   ├── gemini.ts                          → Gemini API client + structured output helpers
 │   ├── adzuna.ts                          → Adzuna API client
 │   ├── posthog-client.ts                  → PostHog browser client
 │   ├── posthog-server.ts                  → PostHog server client
@@ -146,7 +145,7 @@ Calls agent/adzuna.ts
         ↓
 Adzuna API returns job listings
         ↓
-GPT-4o scores each job against user profile
+Gemini 3.5 Flash scores each job against user profile
         ↓
 Agent writes results to InsForge DB
         ↓
@@ -162,11 +161,11 @@ API route in app/api/agent/research
         ↓
 Calls agent/research.ts
         ↓
-Single Browserbase session opens with Stagehand
+Gemini 2.5 Flash Google Search grounding discovers official company pages
         ↓
-Navigates to company homepage + sub pages
+Gemini 2.5 Flash URL Context reads homepage + max 3 public pages
         ↓
-GPT-4o synthesizes dossier from extracted content
+Gemini 3.5 Flash synthesizes dossier from retrieved content
         ↓
 Dossier saved to jobs.company_research
         ↓
@@ -180,7 +179,7 @@ User uploads resume or clicks Generate
         ↓
 API route in app/api/resume/
         ↓
-GPT-4o processes content
+Gemini 3.5 Flash processes content
         ↓
 @react-pdf/renderer renders PDF buffer
         ↓
@@ -257,7 +256,7 @@ URL saved to profiles table
 | benefits           | text[]      | Optional                                       |
 | about_company      | text        | Brief company description                      |
 | match_score        | integer     | 0-100 scored against main profile              |
-| match_reason       | text        | GPT-4o explanation                             |
+| match_reason       | text        | Gemini explanation                             |
 | matched_skills     | text[]      | Skills user has that match                     |
 | missing_skills     | text[]      | Skills user lacks                              |
 | company_research   | jsonb       | Company dossier from research agent            |
@@ -337,15 +336,22 @@ export const createInsforgeServer = async () => {
 
 ---
 
-## Browserbase Session Pattern
+## Gemini Client Pattern
 
 ```typescript
-// Company research session — single session, sequential page visits
-const session = await bb.sessions.create({
-  projectId: process.env.BROWSERBASE_PROJECT_ID!,
-  timeout: 120, // 2 minute session — visits 3-4 pages max
+// lib/gemini.ts
+import { GoogleGenAI } from "@google/genai";
+
+export const gemini = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY!,
 });
+
+export const GEMINI_TEXT_MODEL = "gemini-3.5-flash";
+export const GEMINI_RESEARCH_MODEL = "gemini-2.5-flash";
+export const GEMINI_FAST_MODEL = "gemini-3.1-flash-lite";
 ```
+
+Use `gemini-3.5-flash` by default for matching, extraction, resume generation, and dossier synthesis because it is the newer free-tier text model. Use `gemini-2.5-flash` only for the company web research call because Google Search grounding is free on 2.5 Flash up to the documented daily limit. Use `gemini-3.1-flash-lite` only for low-risk high-volume text calls if rate limits become tight.
 
 ---
 
@@ -374,42 +380,50 @@ const data = await response.json();
 
 ## Company Research Pattern
 
+No browser automation is used for company research. The agent relies on Gemini's hosted web tools and structured synthesis.
+
 ```typescript
-// Single session — visits company homepage and sub pages sequentially
-const stagehand = new Stagehand({
-  env: "BROWSERBASE",
-  apiKey: process.env.BROWSERBASE_API_KEY!,
-  projectId: process.env.BROWSERBASE_PROJECT_ID!,
-  browserbaseSessionID: session.id,
-  modelName: "gpt-4o",
-  modelClientOptions: { apiKey: process.env.OPENAI_API_KEY! },
+// Step 1 — resolve the employer job URL from Adzuna when possible
+const response = await fetch(job.source_url, { redirect: "follow" });
+const employerJobUrl = response.url.includes("adzuna.com")
+  ? null
+  : response.url;
+
+// Step 2 — discover and read public pages
+const researchResponse = await gemini.models.generateContent({
+  model: GEMINI_RESEARCH_MODEL,
+  contents: `
+Research ${job.company} for a candidate applying to ${job.title}.
+Prefer the official website. Use this known job URL if valid: ${employerJobUrl ?? "none"}.
+Find the company homepage and up to 3 useful public pages: About, Careers, Blog, Engineering, Product, or Team.
+Return concise notes and a source URL list.
+`,
+  config: {
+    tools: [{ googleSearch: {} }, { urlContext: {} }],
+  },
 });
 
-await stagehand.init();
-const page = stagehand.page;
-
-// Clean company name and construct homepage URL
-const cleanName = companyName
-  .replace(/\s*(Inc\.?|LLC|Ltd\.?|Corp\.?|Co\.?).*$/i, "")
-  .trim()
-  .toLowerCase()
-  .replace(/\s+/g, "");
-
-const homepageUrl = `https://www.${cleanName}.com`;
-
-// Navigate and extract — graceful fallback if page not found
-try {
-  await page.goto(homepageUrl);
-  await page.waitForLoadState("networkidle");
-  const content = await stagehand.extract({ instruction: "..." });
-} catch (error) {
-  // Log and continue — GPT-4o will synthesize from what was found
-  await logAgentError(jobId, error);
-}
-
-// Always close session when done
-await stagehand.close();
+// Step 3 — synthesize structured JSON without tools
+const dossierResponse = await gemini.models.generateContent({
+  model: GEMINI_TEXT_MODEL,
+  contents: buildCompanyDossierPrompt({
+    researchText: researchResponse.text,
+    job,
+    profile,
+  }),
+  config: {
+    temperature: 0.4,
+    responseFormat: {
+      text: {
+        mimeType: "application/json",
+        schema: companyResearchJsonSchema,
+      },
+    },
+  },
+});
 ```
+
+Always split web research and structured JSON synthesis into separate Gemini calls. The web-tools call is optimized for retrieval and citations. The synthesis call is optimized for schema adherence and app-side validation.
 
 ---
 
@@ -422,9 +436,9 @@ Rules the AI agent must never violate:
 - Server Actions never call agent functions. Agent functions are only called from API routes.
 - All InsForge server-side writes use `createInsforgeServer()` — never the browser client.
 - No hardcoded hex values or raw Tailwind color classes in components — use CSS variables from ui-tokens.md.
-- Every Stagehand action is wrapped in try/catch. Failures are logged to agent_logs, never thrown to crash the run.
-- Company research always returns a dossier — even if browser research fails, GPT-4o synthesizes from company name and job description alone. Never return empty.
-- Browserbase sessions are always closed with stagehand.close() when done — never leave sessions open.
+- Gemini web research failures are caught and logged to agent_logs, never thrown to crash the run.
+- Company research always returns a dossier — even if web research fails, Gemini 3.5 Flash synthesizes from company name, job description, and profile alone. Never return empty.
+- Do not add Browserbase, Stagehand, Playwright, or Puppeteer for company research unless the architecture is explicitly changed.
 - Always scope InsForge queries to the current user_id — never query without a user filter.
 - Adzuna API always includes category=it-jobs — never search without this filter.
 - jobs.source is always 'search' or 'url' — never any other value.

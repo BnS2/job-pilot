@@ -50,7 +50,8 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ## Decisions Made During Build
 
-_Add decisions here as they are made during implementation._
+- 2026-06-09 — Replaced Browserbase + Stagehand with Gemini Google Search grounding + Gemini URL Context for company research. Reason: Browserbase account is unavailable, and company research only needs public web discovery/content extraction rather than interactive browser automation.
+- 2026-06-09 — Replaced OpenAI GPT-4o with a split Gemini model strategy. Use Gemini 3.5 Flash for matching, resume extraction, resume generation, and dossier synthesis because it is the newer free-tier text model. Use Gemini 2.5 Flash only for company web research because Google Search grounding is free on 2.5 Flash up to the documented daily limit. Use Gemini 3.1 Flash-Lite only for low-risk high-volume text calls if quotas become tight.
 
 ---
 

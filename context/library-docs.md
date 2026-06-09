@@ -248,219 +248,195 @@ const jobRecord = {
 - Never pass `where` if location is empty — omit the parameter entirely
 - `source` is always `'search'` for Adzuna jobs — never any other value
 - `salary_is_predicted: "1"` means Adzuna estimated the salary — this is normal
-- Adzuna description is a snippet — GPT-4o scores from it, not a full description
+- Adzuna description is a snippet — Gemini scores from it, not a full description
 - Default country to `'us'` — support `gb`, `au`, `ca` as alternatives
 
 ---
 
-## Browserbase
+## Gemini API
 
-**Check first:** Check AGENTS.md for an installed Browserbase skill. If a Browserbase MCP server is configured — use it. The skill/MCP will have the latest session management and API patterns.
+**Check first:** Check current Gemini API docs before implementing Gemini calls. Model availability, free-tier limits, and structured output syntax change over time.
 
-### Session Creation — Company Research
+### Model Choice
 
-```typescript
-import Browserbase from "@browserbasehq/sdk";
-
-const bb = new Browserbase({ apiKey: process.env.BROWSERBASE_API_KEY! });
-
-// Single session for company research — sequential page visits
-const session = await bb.sessions.create({
-  projectId: process.env.BROWSERBASE_PROJECT_ID!,
-  timeout: 120, // 2 minute session — visits 3-4 pages max
-});
-```
-
-**Important — Browserbase runs independently from your Next.js server:**
-Browserbase sessions run on Browserbase's cloud infrastructure, not inside your Next.js API route. The API route triggers the Browserbase session and returns a response while the session continues running independently on Browserbase's platform. Do not add `maxDuration` or any timeout configuration to Next.js API routes to accommodate Browserbase session length.
-
-**Rules:**
-
-- Always use single sessions — never parallel sessions (free plan limit)
-- Session timeout is 120 seconds — sufficient for 3-4 page visits
-- Always end sessions cleanly — call stagehand.close() when done
-- Project ID always from `process.env.BROWSERBASE_PROJECT_ID` — never hardcode
-- Browserbase client lives in `lib/browserbase.ts` — always import from there
-
----
-
-## Stagehand
-
-**Check first:** Check AGENTS.md for an installed Stagehand skill. If a Stagehand MCP server is configured — use it. The skill/MCP will have the latest act() and extract() patterns.
-
-### Initialisation
+Model constants for JobPilot:
 
 ```typescript
-import { Stagehand } from "@browserbasehq/stagehand";
-
-const stagehand = new Stagehand({
-  env: "BROWSERBASE",
-  apiKey: process.env.BROWSERBASE_API_KEY!,
-  projectId: process.env.BROWSERBASE_PROJECT_ID!,
-  browserbaseSessionID: session.id,
-  model: { modelName: "openai/gpt-4o", apiKey: process.env.OPENAI_API_KEY! },
-  disablePino: true,
-});
-
-await stagehand.init();
-const page = stagehand.context.activePage()!;
+export const GEMINI_TEXT_MODEL = "gemini-3.5-flash";
+export const GEMINI_RESEARCH_MODEL = "gemini-2.5-flash";
+export const GEMINI_FAST_MODEL = "gemini-3.1-flash-lite";
 ```
 
-### extract()
+Use `gemini-3.5-flash` for matching, profile extraction, resume generation, and company research synthesis because it is the newer free-tier text model. Use `gemini-2.5-flash` for the web research call because Google Search grounding is free on 2.5 Flash up to the documented daily limit. Use `gemini-3.1-flash-lite` only for low-risk high-volume text calls if rate limits become tight.
+
+Do not use OpenAI models in this project.
+
+### Client Setup
+
+```typescript
+// lib/gemini.ts
+import { GoogleGenAI } from "@google/genai";
+
+export const gemini = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY!,
+});
+
+export const GEMINI_TEXT_MODEL = "gemini-3.5-flash";
+export const GEMINI_RESEARCH_MODEL = "gemini-2.5-flash";
+export const GEMINI_FAST_MODEL = "gemini-3.1-flash-lite";
+```
+
+### Structured JSON Response
 
 ```typescript
 import { z } from "zod";
+import { gemini, GEMINI_TEXT_MODEL } from "@/lib/gemini";
 
-const result = await stagehand.extract({
-  instruction:
-    "Extract the company overview, main product description, and any technology mentions from this page.",
-  schema: z.object({
-    companyOverview: z.string().optional(),
-    mainProduct: z.string().optional(),
-    techMentions: z.array(z.string()).optional(),
-    navLinks: z
-      .array(
-        z.object({
-          label: z.string(),
-          url: z.string(),
-        }),
-      )
-      .optional(),
-  }),
+const matchSchema = z.object({
+  matchScore: z.number().int().min(0).max(100),
+  matchReason: z.string(),
+  matchedSkills: z.array(z.string()),
+  missingSkills: z.array(z.string()),
 });
+
+const matchJsonSchema = {
+  type: "object",
+  properties: {
+    matchScore: { type: "integer", minimum: 0, maximum: 100 },
+    matchReason: { type: "string" },
+    matchedSkills: { type: "array", items: { type: "string" } },
+    missingSkills: { type: "array", items: { type: "string" } },
+  },
+  required: ["matchScore", "matchReason", "matchedSkills", "missingSkills"],
+  additionalProperties: false,
+};
+
+const response = await gemini.models.generateContent({
+  model: GEMINI_TEXT_MODEL,
+  contents: prompt,
+  config: {
+    temperature: 0.3,
+    maxOutputTokens: 400,
+    responseFormat: {
+      text: {
+        mimeType: "application/json",
+        schema: matchJsonSchema,
+      },
+    },
+  },
+});
+
+const result = matchSchema.parse(JSON.parse(response.text ?? "{}"));
 ```
 
-### act()
+**Temperature settings:**
 
-```typescript
-// Always wrap in try/catch
-try {
-  await stagehand.act({
-    action: "Click the About link in the navigation",
-  });
-} catch (error) {
-  await logAgentError(jobId, null, error);
-}
-```
+- `0.2` — job matching and profile extraction
+- `0.4` — company research synthesis
+- `0.7` — resume generation
 
-## Company Research Section
+**Max output tokens:**
 
-Replace the existing Stagehand "Company Research Pattern" section in library-docs.md with this:
+- Job matching + scoring: `400`
+- Company research synthesis: `1000`
+- Resume generation: `1200`
+- Profile extraction from resume: `1000`
+
+**Rules:**
+
+- Model string is always `GEMINI_TEXT_MODEL`, `GEMINI_RESEARCH_MODEL`, or `GEMINI_FAST_MODEL` from `lib/gemini.ts`
+- Always use structured output for data saved to DB
+- Always validate parsed JSON with Zod before using it
+- Always wrap Gemini calls in try/catch and log failures to agent_logs for agent operations
+- Match threshold is always `MATCH_THRESHOLD` from `lib/utils.ts` — never hardcode 70
+- Company research synthesis must always return a complete dossier — never return empty even if web research failed
 
 ---
 
-### Company Research Pattern
+## Gemini Company Research
 
-Three-step process: homepage extraction → sub-page extraction → GPT-4o synthesis.
+Company research uses Gemini's hosted web tools instead of a cloud browser:
+
+1. Resolve Adzuna redirect with server-side `fetch()`.
+2. Use Gemini 2.5 Flash Google Search grounding + URL Context to discover and read official public pages.
+3. Use a second Gemini 3.5 Flash structured-output call to synthesize the dossier.
+
 Job description and user profile come from DB — never re-fetch what you already have.
-Browser's only job is the company website.
+
+### Web Research Call
 
 ```typescript
-// Step 1 — Homepage extraction
-const homepageData = await stagehand.extract({
-  instruction:
-    "This is a company's homepage. Capture what the company actually does, who it's for, and any concrete signals (funding, customers, scale, mission, recent launches). Then find the internal links most worth visiting to research them as an employer.",
-  schema: z.object({
-    oneLiner: z.string().describe("What the company does in one sentence"),
-    productSummary: z
-      .string()
-      .describe("What they build/sell and who it's for"),
-    signals: z
-      .array(z.string())
-      .describe("Funding, notable customers, scale, mission, recent news"),
-    pageLinks: z
-      .array(
-        z.object({
-          url: z.string(),
-          kind: z.enum([
-            "about",
-            "careers",
-            "blog",
-            "engineering",
-            "product",
-            "team",
-            "other",
-          ]),
-        }),
-      )
-      .describe("Internal links worth visiting"),
-  }),
-});
+const researchResponse = await gemini.models.generateContent({
+  model: GEMINI_RESEARCH_MODEL,
+  contents: `
+Research the official public web presence for this company and role.
 
-// If oneLiner and productSummary are empty — wrong site or parked domain
-// Skip to synthesis with job description and profile only
-if (!homepageData.oneLiner && !homepageData.productSummary) {
-  await stagehand.close();
-  // proceed to synthesis with empty companyResearch
-}
-
-// Step 2 — Sub-page extraction (max 3, prefer about/blog/engineering/product over careers)
-const subPageData = await stagehand.extract({
-  instruction:
-    "Extract substance that helps a candidate understand this company before applying: what they do, their values and how they work, the specific technologies and tools they use, notable projects or customers, and how the team operates. Ignore nav, footers, cookie banners, and generic marketing copy.",
-  schema: z.object({
-    keyPoints: z.array(z.string()),
-    technologies: z
-      .array(z.string())
-      .describe("Specific languages, frameworks, tools, platforms"),
-    valuesOrCulture: z
-      .array(z.string())
-      .describe("Stated values, working style, team norms"),
-    notable: z
-      .array(z.string())
-      .describe("Customers, funding, scale, projects, awards"),
-  }),
-});
-
-// Step 3 — GPT-4o synthesis (after browser closes)
-// Feed three data sources: company research + job from DB + profile from DB
-const systemPrompt = `You are a sharp career strategist preparing a candidate to apply for a specific role. You are given (a) research collected from the company's own website, (b) the job posting, and (c) the candidate's profile. Produce a concise, concrete briefing that gives this specific candidate an edge for this specific role.
-
-Rules:
-- Ground every company claim in the provided research or job posting. Never invent funding, customers, headcount, or facts. If research was thin, infer carefully from the job posting and say what's inferred.
-- Be specific to THIS candidate. Connect their actual skills and past work to this company's stack, product, and values. No generic advice that would apply to anyone.
-- Turn the candidate's missing skills into a strategy: how to frame the gap honestly and what adjacent experience to lean on.
-- Talking points and questions must reference real things from the research, the kind of detail that signals the candidate did their homework.
-- Keep every item tight: one or two sentences. No fluff.
-
-Return ONLY valid JSON matching this shape:
-{
-  "companyOverview": string,
-  "techStack": string[],
-  "culture": string[],
-  "whyThisRole": string,
-  "yourEdge": string[],
-  "gapsToAddress": string[],
-  "smartQuestions": string[],
-  "interviewPrep": string[],
-  "sources": string[]
-}`;
-
-const userPrompt = `COMPANY RESEARCH (from their website):
-${JSON.stringify(companyResearch)}
-
-JOB POSTING:
-Title: ${job.title}
 Company: ${job.company}
-Description: ${job.description}
-Matched skills (already computed): ${job.matched_skills.join(", ")}
-Missing skills (already computed): ${job.missing_skills.join(", ")}
+Role: ${job.title}
+Known employer job URL: ${employerJobUrl ?? "none"}
+Likely homepage: ${derivedHomepageUrl ?? "none"}
 
-CANDIDATE PROFILE:
-Current title: ${profile.current_title}
-Experience: ${profile.years_experience} years, level ${profile.experience_level}
-Skills: ${profile.skills.join(", ")}
-Work history: ${JSON.stringify(profile.work_experience)}`;
+Find the official homepage and up to 3 useful public pages:
+About, Careers, Blog, Engineering, Product, Team, or Press.
 
-const response = await openai.chat.completions.create({
-  model: "gpt-4o",
-  response_format: { type: "json_object" },
-  temperature: 0.4,
-  messages: [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: userPrompt },
-  ],
+Return concise notes and source URLs. Ground claims in retrieved pages.
+If research is thin, say what is inferred from the job posting.
+`,
+  config: {
+    tools: [{ googleSearch: {} }, { urlContext: {} }],
+  },
 });
+
+const researchText = researchResponse.text ?? "";
+const urlContextUrls =
+  researchResponse.candidates?.[0]?.urlContextMetadata?.urlMetadata
+    ?.filter((item) => item.urlRetrievalStatus === "URL_RETRIEVAL_STATUS_SUCCESS")
+    .map((item) => item.retrievedUrl) ?? [];
+
+const groundedUrls =
+  researchResponse.candidates?.[0]?.groundingMetadata?.groundingChunks
+    ?.map((chunk) => chunk.web?.uri)
+    .filter((url): url is string => Boolean(url)) ?? [];
+
+const sourceUrls = Array.from(new Set([...urlContextUrls, ...groundedUrls]));
+```
+
+### Structured Dossier Synthesis
+
+```typescript
+const dossierSchema = z.object({
+  companyOverview: z.string(),
+  techStack: z.array(z.string()),
+  culture: z.array(z.string()),
+  whyThisRole: z.string(),
+  yourEdge: z.array(z.string()),
+  gapsToAddress: z.array(z.string()),
+  smartQuestions: z.array(z.string()),
+  interviewPrep: z.array(z.string()),
+  sources: z.array(z.string()),
+});
+
+const response = await gemini.models.generateContent({
+  model: GEMINI_TEXT_MODEL,
+  contents: buildCompanyDossierPrompt({
+    researchText,
+    sourceUrls,
+    job,
+    profile,
+  }),
+  config: {
+    temperature: 0.4,
+    maxOutputTokens: 1000,
+    responseFormat: {
+      text: {
+        mimeType: "application/json",
+        schema: companyResearchJsonSchema,
+      },
+    },
+  },
+});
+
+const dossier = dossierSchema.parse(JSON.parse(response.text ?? "{}"));
 ```
 
 **Dossier fields:**
@@ -479,67 +455,15 @@ const response = await openai.chat.completions.create({
 
 **Rules:**
 
-- Always use `extract()` with a Zod schema — never parse raw HTML or use regex
-- Always wrap every `act()` and `extract()` in try/catch
-- Always call `await stagehand.close()` when done — ends the Browserbase session
-- Model is always `gpt-4o` — never use other models
-- Temperature is `0.4` for synthesis — grounded but flexible enough to make real connections
-- Max 3 sub-pages — never exceed this on free plan
-- Always close session in finally block — never leave sessions open even if research fails
-- Job description and profile always come from DB — never re-fetch via browser
-- If browser research returns empty — still run synthesis with job + profile only
+- Never use Browserbase, Stagehand, Playwright, or Puppeteer for company research
+- Do not parse raw HTML with regex; let Gemini URL Context handle public page content
+- Keep web research and structured synthesis as separate Gemini calls
+- Do not request structured JSON from the same call that uses `googleSearch` or `urlContext`
+- Max 4 URLs per company research run
+- At most 1 web research call and 1 synthesis call per user click
+- Always cache the final dossier in jobs.company_research
+- If web research returns empty — still run synthesis with job + profile only
 - yourEdge, gapsToAddress, and smartQuestions are the most valuable fields — never skip them
-
-## OpenAI GPT-4o
-
-**Check first:** Check AGENTS.md for an installed OpenAI skill. The skill will have the latest API patterns and model capabilities.
-
-### Structured JSON Response
-
-```typescript
-import OpenAI from "openai";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
-
-const response = await openai.chat.completions.create({
-  model: "gpt-4o",
-  response_format: { type: "json_object" },
-  temperature: 0.3,
-  messages: [
-    {
-      role: "system",
-      content: "You are a job matching assistant. Return only valid JSON.",
-    },
-    {
-      role: "user",
-      content: `Your prompt here`,
-    },
-  ],
-});
-
-const result = JSON.parse(response.choices[0].message.content!);
-```
-
-**Temperature settings:**
-
-- `0.3` — matching, scoring, extraction, research synthesis — deterministic results
-- `0.7` — resume generation — natural variation
-
-**Max tokens:**
-
-- Job matching + scoring: `300`
-- Company research synthesis: `800`
-- Resume generation: `1000`
-- Profile extraction from resume: `800`
-
-**Rules:**
-
-- Model string is always `'gpt-4o'` — never use other model names
-- Always use `response_format: { type: 'json_object' }` for structured data
-- Always parse `response.choices[0].message.content` as string — even with json_object it returns a string
-- Always validate parsed JSON before using — wrap in try/catch
-- Match threshold is always `MATCH_THRESHOLD` from `lib/utils.ts` — never hardcode 70
-- Company research synthesis must always return a complete dossier — never return empty even if browser research failed
 
 ---
 
@@ -677,13 +601,13 @@ export async function POST(req: NextRequest) {
   const pdfData = await pdf(buffer);
   const extractedText = pdfData.text; // raw text content
 
-  // Send to GPT-4o for structured extraction
+  // Send to Gemini for structured extraction
 }
 ```
 
 **Rules:**
 
 - Server-side only — never import in client components
-- `pdfData.text` is raw unformatted text — GPT-4o handles the structure extraction
+- `pdfData.text` is raw unformatted text — Gemini handles the structure extraction
 - Always handle parse errors — some PDFs are image-based and return empty text
 - If `pdfData.text` is empty or very short — return error to user: "Could not extract text from this PDF. Please try a different file."

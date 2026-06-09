@@ -117,7 +117,7 @@ Wire profile form to InsForge DB.
 
 ### 07 AI Profile Extraction from Resume
 
-Extract from Resume button — GPT-4o reads uploaded PDF and auto-fills profile form fields.
+Extract from Resume button — Gemini 3.5 Flash reads uploaded PDF text and auto-fills profile form fields.
 
 **UI:**
 
@@ -130,7 +130,7 @@ Extract from Resume button — GPT-4o reads uploaded PDF and auto-fills profile 
 
 - pdf-parse extracts raw text from uploaded PDF buffer
 - If extracted text is empty or too short — return error: "Could not extract text from this PDF. Please try a different file."
-- GPT-4o reads extracted text and returns structured JSON matching all profile field names
+- Gemini 3.5 Flash reads extracted text and returns structured JSON matching all profile field names
 - Form fields populated with extracted data
 - User saves manually after reviewing
 
@@ -138,17 +138,17 @@ Extract from Resume button — GPT-4o reads uploaded PDF and auto-fills profile 
 
 ### 08 Resume PDF Generation from Profile
 
-Generate a clean professional PDF resume from current profile data using GPT-4o.
+Generate a clean professional PDF resume from current profile data using Gemini 3.5 Flash.
 
 **Logic:**
 
 - POST /api/resume/generate
 - Reads current profile data from profiles table
-- GPT-4o generates professional resume content:
+- Gemini 3.5 Flash generates professional resume content:
   - Professional summary paragraph
   - Polished work experience bullet points
   - Clean professional language throughout
-- @react-pdf/renderer renders GPT-4o output into clean single-page PDF using renderToBuffer()
+- @react-pdf/renderer renders Gemini output into clean single-page PDF using renderToBuffer()
 - Buffer uploaded to InsForge Storage at resumes/{user_id}/resume.pdf with upsert: true
 - resume_pdf_url updated in profiles table
 
@@ -187,7 +187,7 @@ Agent calls Adzuna API to find jobs matching user's search criteria, scores them
   - Detect country from location input — default to 'us'
 - For each job returned:
   - Extract title, company, location, salary, description snippet, redirect_url
-  - GPT-4o scores job against user profile:
+  - Gemini 3.5 Flash scores job against user profile:
     - matchScore — integer 0-100
     - matchReason — one paragraph explanation
     - matchedSkills — skills user has that job requires
@@ -231,7 +231,7 @@ Build the complete job details page UI. Job data from DB is already available fr
 - Back to Jobs link
 - Job header — company logo placeholder, job title, company name, match score badge with percentage, View Job Post button (links to redirect_url)
 - Info cards row — Salary Est., Location, Job Type, Date Found
-- AI Match Reasoning section — match reason paragraph from GPT-4o
+- AI Match Reasoning section — match reason paragraph from Gemini 3.5 Flash
 - Required Skills vs Your Profile — matched skills as green badges, missing skills as red/orange badges
 - Job Description section — description content from Adzuna
 - Company Research card — empty state with Research Company button. After research: structured dossier with company overview, tech stack, culture, why this role, interview prep
@@ -241,84 +241,66 @@ Build the complete job details page UI. Job data from DB is already available fr
 
 # Feature 13 — Company Research Agent (Updated)
 
-Agent researches the company using their public website and builds a structured dossier using a single Browserbase session. Three data sources fused together: company website content, job description from DB, user profile from DB.
+Agent researches the company using Gemini 2.5 Flash Google Search grounding and URL Context, then builds a structured dossier with Gemini 3.5 Flash. No Browserbase, Stagehand, Playwright, or Puppeteer is used. Three data sources are fused together: company website content, job description from DB, user profile from DB.
 
 **Logic:**
 
 - POST /api/agent/research receives jobId
 - Load job data from DB — extract company_name, job description, matched_skills, missing_skills
 - Load user profile from DB — skills, experience, work history
-- Derive company homepage URL by following the Adzuna redirect with server-side fetch() — no browser needed for this step:
-  - fetch(redirect_url, { redirect: "follow" }) follows HTTP redirects natively before the browser opens
+- If jobs.company_research already exists — return it immediately, do not spend another Gemini call
+- Derive a likely employer URL by following the Adzuna redirect with server-side fetch() — no browser needed for this step:
+  - fetch(redirect_url, { redirect: "follow" }) follows HTTP redirects natively before Gemini research runs
   - Use response.url as the real employer job page URL
   - Strip subdomain from response.url hostname (e.g. jobs.stripe.com → stripe.com)
   - Construct homepage URL as https://{rootDomain}
-  - If response.url still contains "adzuna.com" or fetch throws — fall back to https://www.{company}.com (company name from DB)
-  - If Stagehand gets no meaningful content (oneLiner and productSummary empty) — skip browser research entirely, proceed to GPT-4o synthesis with job description and profile only
-- Open single Browserbase session with Stagehand
-  **Stagehand homepage extraction:**
+  - If response.url still contains "adzuna.com" or fetch throws — leave employerJobUrl null and let Gemini Search discover the site
+- Run Gemini web research call:
+  - Model: gemini-2.5-flash
+  - Reason: Google Search grounding is free on 2.5 Flash up to the documented daily limit
+  - Tools: googleSearch and urlContext
+  - Inputs: company name, job title, employerJobUrl if available, derived homepage URL if available, job description snippet
+  - Ask for official website only, max 4 URLs, concise notes, and source URLs
+  - Do not request structured JSON in this web-tools call; optimize it for retrieval and citation metadata
+- Run Gemini structured synthesis call:
+  - Model: gemini-3.5-flash
+  - Tools: none
+  - responseFormat: application/json with dossier schema
+  - Temperature: 0.4
+  - Inputs: research notes, source URLs, job data from DB, profile data from DB
+  - Validate parsed JSON with Zod before saving
+- If web research returns no useful content — still run structured synthesis with job description and profile only
+- Save complete dossier to jobs.company_research jsonb column
+- Always return a dossier — never fail silently
+
+**Gemini web research call:**
 
 ```typescript
-const homepage = await stagehand.extract({
-  instruction:
-    "This is a company's homepage. Capture what the company actually does, who it's for, and any concrete signals (funding, customers, scale, mission, recent launches). Then find the internal links most worth visiting to research them as an employer.",
-  schema: z.object({
-    oneLiner: z.string().describe("What the company does in one sentence"),
-    productSummary: z
-      .string()
-      .describe("What they build/sell and who it's for"),
-    signals: z
-      .array(z.string())
-      .describe("Funding, notable customers, scale, mission, recent news"),
-    pageLinks: z
-      .array(
-        z.object({
-          url: z.string(),
-          kind: z.enum([
-            "about",
-            "careers",
-            "blog",
-            "engineering",
-            "product",
-            "team",
-            "other",
-          ]),
-        }),
-      )
-      .describe("Internal links worth visiting"),
-  }),
+const researchResponse = await gemini.models.generateContent({
+  model: GEMINI_RESEARCH_MODEL,
+  contents: `
+Research the official public web presence for:
+Company: ${job.company}
+Role: ${job.title}
+Known employer job URL: ${employerJobUrl ?? "none"}
+Likely homepage: ${derivedHomepageUrl ?? "none"}
+
+Find the official homepage and up to 3 useful pages for a job candidate:
+About, Careers, Blog, Engineering, Product, Team, or Press.
+
+Return concise notes covering what the company does, product, customers or market,
+tech signals, culture or values, and a source URL list. Do not use unofficial sites
+unless no official site is available, and clearly mark any inferred claims.
+`,
+  config: {
+    tools: [{ googleSearch: {} }, { urlContext: {} }],
+  },
 });
 ```
 
-If oneLiner and productSummary are empty — bail to synthesis with job description and profile only.
+**Gemini structured synthesis call:**
 
-**Stagehand sub-page extraction (max 3 pages — prefer about/blog/engineering/product over careers):**
-
-```typescript
-const page = await stagehand.extract({
-  instruction:
-    "Extract substance that helps a candidate understand this company before applying: what they do, their values and how they work, the specific technologies and tools they use, notable projects or customers, and how the team operates. Ignore nav, footers, cookie banners, and generic marketing copy.",
-  schema: z.object({
-    keyPoints: z.array(z.string()),
-    technologies: z
-      .array(z.string())
-      .describe("Specific languages, frameworks, tools, platforms"),
-    valuesOrCulture: z
-      .array(z.string())
-      .describe("Stated values, working style, team norms"),
-    notable: z
-      .array(z.string())
-      .describe("Customers, funding, scale, projects, awards"),
-  }),
-});
-```
-
-- Close Browserbase session after homepage + max 3 sub-pages
-  **GPT-4o synthesis (runs after browser closes):**
-
-System prompt:
-
-```
+```text
 You are a sharp career strategist preparing a candidate to apply for a specific role.
 You are given (a) research collected from the company's own website, (b) the job posting,
 and (c) the candidate's profile. Produce a concise, concrete briefing that gives this
@@ -342,7 +324,7 @@ Return ONLY valid JSON.
 User prompt feeds three data sources:
 
 ```
-COMPANY RESEARCH (from their website): {companyResearch}
+COMPANY RESEARCH (from Gemini Search + URL Context): {companyResearch}
 JOB POSTING: title, company, description, matched_skills, missing_skills
 CANDIDATE PROFILE: current_title, years_experience, experience_level, skills, work_experience
 ```
@@ -365,9 +347,15 @@ Temperature: 0.4
 }
 ```
 
-- Save complete dossier to jobs.company_research jsonb column
-- Always return a dossier — never fail silently. If browser research failed, GPT-4o synthesizes from job description and profile alone.
-  **PostHog event:** `company_researched` — { userId, jobId, company }
+**Free-tier guardrails:**
+
+- At most 1 Gemini web research call per user click
+- At most 1 Gemini structured synthesis call per user click
+- At most 4 public URLs considered per research run
+- Never loop over search results with additional Gemini calls
+- Cache final dossier in jobs.company_research and reuse it
+
+**PostHog event:** `company_researched` — { userId, jobId, company }
 
 ---
 
