@@ -26,6 +26,53 @@ Never rely on general training knowledge alone for library APIs — they change 
 
 ---
 
+## Varlock
+
+**Check first:** Use the official Varlock docs before installing or changing integration code. Varlock is the project standard for `.env` schema, validation, and safe secret loading.
+
+### Project Convention
+
+```text
+.env.schema  → committed Varlock schema and documentation, no plaintext secrets
+.env         → local development values, gitignored
+```
+
+**Rules:**
+
+- `.env.schema` is the only env file AI agents should inspect for variable context.
+- `.env` may exist locally, but agents must not print, summarize, copy, or commit its values.
+- Use `.env` consistently for JobPilot local values. Do not add new variables to `.env.local`.
+- Add or change environment variables in `.env.schema` before touching application code.
+- Mark secrets such as `GEMINI_API_KEY`, `ADZUNA_APP_KEY`, and future server-only provider tokens as sensitive.
+- Keep public browser variables limited to the `NEXT_PUBLIC_` variables intentionally exposed by Next.js.
+- Use `varlock load` to validate the schema and local values.
+- Use `varlock run -- <command>` for commands that need env injection, including `next dev`, `next build`, scripts, migrations, and one-off agent tooling.
+
+### Next.js Pattern
+
+JobPilot should continue using `process.env` in app code unless a later implementation intentionally adopts Varlock-generated types.
+
+```typescript
+const apiKey = process.env.GEMINI_API_KEY!;
+```
+
+Once Varlock is installed, package scripts should wrap the underlying command instead of relying on Next.js to read raw `.env` files directly:
+
+```json
+{
+  "scripts": {
+    "dev": "varlock run -- next dev",
+    "build": "varlock run -- next build",
+    "start": "varlock run -- next start",
+    "lint": "varlock run -- eslint"
+  }
+}
+```
+
+Do not add a dotenv package for this project. Varlock is the environment loading and validation layer.
+
+---
+
 ## InsForge
 
 **Check first:** Check AGENTS.md for an installed InsForge skill. If an InsForge MCP server is configured — use it. The skill/MCP will have the latest API patterns.
@@ -36,7 +83,7 @@ Two separate instances — never mix them:
 
 ```typescript
 // lib/insforge-client.ts — browser context only
-import { createBrowserClient } from "@insforge/ssr";
+import { createBrowserClient } from "@insforge/sdk/ssr";
 
 export const insforge = createBrowserClient(
   process.env.NEXT_PUBLIC_INSFORGE_URL!,
@@ -46,7 +93,7 @@ export const insforge = createBrowserClient(
 
 ```typescript
 // lib/insforge-server.ts — server context only
-import { createServerClient } from "@insforge/ssr";
+import { createServerClient } from "@insforge/sdk/ssr";
 import { cookies } from "next/headers";
 
 export const createInsforgeServer = async () => {

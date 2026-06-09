@@ -8,6 +8,21 @@ Full page UI built with mock data first — verified visually before any logic i
 
 ## Phase 1 — Foundation
 
+### 00 Environment Schema
+
+Add Varlock before wiring external services.
+
+**Logic:**
+
+- Install Varlock as the project environment manager
+- Create committed `.env.schema`
+- Keep `.env.schema` limited to environment variables currently referenced by application code
+- Add future variables in the same feature that introduces the consuming `process.env` usage
+- Keep real local values in gitignored `.env`
+- Mark server-only keys as sensitive when they are added
+- Wrap npm scripts with `varlock run --`
+- Validate local config with `varlock load`
+
 ### 01 Homepage
 
 Build the complete homepage UI.

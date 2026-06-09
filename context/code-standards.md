@@ -239,19 +239,27 @@ Always fire these with correct properties.
 
 ## Environment Variables
 
-All environment variables defined in `.env.local` for development. Never hardcode any key, URL, or secret anywhere in the codebase.
+Environment variables are managed through Varlock.
 
-| Variable                        | Used In                |
-| ------------------------------- | ---------------------- |
-| `NEXT_PUBLIC_INSFORGE_URL`      | lib/insforge-client.ts |
-| `NEXT_PUBLIC_INSFORGE_ANON_KEY` | lib/insforge-client.ts |
-| `GEMINI_API_KEY`                | lib/gemini.ts          |
-| `ADZUNA_APP_ID`                 | lib/adzuna.ts          |
-| `ADZUNA_APP_KEY`                | lib/adzuna.ts          |
-| `NEXT_PUBLIC_POSTHOG_KEY`       | lib/posthog-client.ts  |
-| `NEXT_PUBLIC_POSTHOG_HOST`      | lib/posthog-client.ts  |
+- `.env.schema` is the committed source of truth for variable names, descriptions, sensitivity, required status, and validation.
+- `.env` contains local development values and remains gitignored.
+- JobPilot uses `.env` as the single local values file for Varlock. Do not add new project variables to `.env.local`.
+- Do not commit `.env`, `.env.local`, decrypted secrets, copied provider keys, or screenshots/logs that expose secret values.
+- Run local development, builds, linting, scripts, and future database tooling through Varlock once it is installed: `varlock run -- <command>`.
+- Use `varlock load` before debugging environment issues so missing or invalid variables are caught before app code runs.
+- Application code still reads values through `process.env` unless a future implementation explicitly adopts generated Varlock types.
+- Never hardcode any key, URL, or secret anywhere in the codebase.
+
+Current active environment variables:
+
+| Variable                       | Used In                                                       |
+| ------------------------------ | ------------------------------------------------------------- |
+| `NEXT_PUBLIC_INSFORGE_URL`     | `lib/insforge-client.ts`, `lib/insforge-server.ts`, `proxy.ts` |
+| `NEXT_PUBLIC_INSFORGE_ANON_KEY` | `lib/insforge-client.ts`, `lib/insforge-server.ts`, `proxy.ts` |
 
 `NEXT_PUBLIC_` prefix means the variable is exposed to the browser. Never add `NEXT_PUBLIC_` to secret keys.
+
+When adding a new variable, update `.env.schema`, this table, and the consuming module in the same feature. If the value is secret, mark it sensitive in Varlock and keep it server-only.
 
 ---
 
@@ -303,7 +311,8 @@ Never install a new package without a clear reason. Before installing anything c
 
 Approved dependencies for this project:
 
-- `@insforge/ssr` — InsForge client
+- `varlock` — environment schema, validation, injection, and secret scanning
+- `@insforge/sdk` — InsForge client, SSR helpers, auth, database, storage, functions, and realtime
 - `@google/genai` — Gemini API client
 - `posthog-js` — PostHog browser client
 - `posthog-node` — PostHog server client

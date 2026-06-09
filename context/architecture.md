@@ -6,6 +6,7 @@
 | ------------------------------ | ------------------------ | ------------------------------------------------ |
 | Framework                      | Next.js 16 (App Router)  | Full stack framework                             |
 | Auth + DB + Storage + Realtime | InsForge                 | Entire backend                                   |
+| Env management                 | Varlock                  | Schema, validation, and safe loading for `.env`  |
 | Web research                   | Gemini 2.5 URL Context   | Reads public company pages and retrieved URLs     |
 | Web discovery                  | Gemini 2.5 Google Search | Finds official company pages with free grounding  |
 | Job Discovery                  | Adzuna API               | Job search and discovery                         |
@@ -304,7 +305,7 @@ Two separate InsForge instances — never mix them:
 ```typescript
 // lib/insforge-client.ts
 // Browser-side — used in client components for auth state
-import { createBrowserClient } from "@insforge/ssr";
+import { createBrowserClient } from "@insforge/sdk/ssr";
 export const insforge = createBrowserClient(
   process.env.NEXT_PUBLIC_INSFORGE_URL!,
   process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY!,
@@ -312,7 +313,7 @@ export const insforge = createBrowserClient(
 
 // lib/insforge-server.ts
 // Server-side — used in API routes, Server Actions, agent code
-import { createServerClient } from "@insforge/ssr";
+import { createServerClient } from "@insforge/sdk/ssr";
 import { cookies } from "next/headers";
 
 export const createInsforgeServer = async () => {
