@@ -7,8 +7,8 @@ Update this file after every completed feature. Any AI agent reading this should
 ## Current Status
 
 **Phase:** Phase 1 — Foundation
-**Last completed:** 02 Auth
-**Next:** 03 PostHog Initialization
+**Last completed:** 03 PostHog Initialization
+**Next:** 04 Database Schema
 
 ---
 
@@ -19,7 +19,7 @@ Update this file after every completed feature. Any AI agent reading this should
 - [x] 00 Environment Schema
 - [x] 01 Homepage
 - [x] 02 Auth
-- [ ] 03 PostHog Initialization
+- [x] 03 PostHog Initialization
 - [ ] 04 Database Schema
 
 ### Phase 2 — Profile Page
@@ -56,6 +56,8 @@ Update this file after every completed feature. Any AI agent reading this should
 - 2026-06-09 — Added a browser-agent escape hatch. Phase 1 stays Gemini Search + URL Context because it preserves the same user-facing dossier flow without Browserbase. If real usage shows weak research, missing sources, or a future need for visual/interactive browsing, add a separate Playwright + Gemini worker while keeping the same `jobs.company_research` schema.
 - 2026-06-10 — Adopted Varlock for environment variable context. `.env.schema` will be the committed source of truth for env names, validation, and sensitivity; real local values stay in gitignored `.env`.
 - 2026-06-10 — Implemented InsForge OAuth auth with `@insforge/sdk/ssr`, using Next.js 16 `proxy.ts` for protected route checks instead of deprecated middleware.
+- 2026-06-10 — Installed PostHog MCP for Codex with `npx @posthog/wizard mcp add`. MCP is for agent-side analytics workflows and does not affect app runtime.
+- 2026-06-10 — Completed PostHog initialization alignment. The wizard-added foundation events are now explicitly allowed in `code-standards.md`, and server-side PostHog captures use a short-lived client with `await shutdown()` before route return.
 
 ---
 
@@ -65,3 +67,6 @@ Update this file after every completed feature. Any AI agent reading this should
 - 2026-06-10 — Installed `varlock@1.5.1`, added committed `.env.schema`, unignored `.env.schema`, and wrapped package scripts with `varlock run --`. `.env.schema` currently documents the public InsForge variables consumed by auth, and future env entries should be added in the same feature that introduces their consuming code.
 - 2026-06-10 — Auth now requires `NEXT_PUBLIC_INSFORGE_URL` and `NEXT_PUBLIC_INSFORGE_ANON_KEY` in `.env`. Login supports Google and GitHub OAuth, `/callback` completes the browser SDK exchange, `/api/auth/refresh` refreshes sessions, and `proxy.ts` protects `/dashboard`, `/profile`, and `/find-jobs`.
 - 2026-06-10 — Polished the auth page into a simplified split-card OAuth page matching the project UI context and added a temporary protected `/dashboard` checkpoint with logout so the login/logout flow can be tested before the full Phase 5 dashboard.
+- 2026-06-10 — PostHog wizard output was folded into this tracker instead of kept as a standalone report. The wizard added `posthog-js`, `posthog-node`, `instrumentation-client.ts`, PostHog reverse-proxy rewrites, homepage CTA captures, auth-funnel captures, server-side sign-in capture, and a Codex MCP setup. `.env.schema` now includes `NEXT_PUBLIC_POSTHOG_KEY` and `NEXT_PUBLIC_POSTHOG_HOST`. The wizard also created PostHog-hosted insights for analytics basics, sign-up conversion, daily sign-ins, provider breakdown, auth errors, and sign-outs.
+- 2026-06-10 — Added typed PostHog client/server helpers in `lib/posthog-client.ts`, `lib/posthog-server.ts`, and `lib/posthog-events.ts`; migrated homepage/auth captures to the helpers; added `dashboard_checkpoint_viewed` for the current authenticated dashboard checkpoint.
+- 2026-06-10 — Follow-up PostHog/local env cleanup: browser PostHog now disables feature flag polling and normal dev debug retry logs because JobPilot does not use flags yet. Environment context now explicitly says `.env` is the only local values file; `.env.local` is wizard/tool drift and should not receive project variables.

@@ -548,17 +548,20 @@ Fallback rules:
 // lib/posthog-client.ts
 import posthog from "posthog-js";
 
-export function initPostHog() {
-  if (typeof window !== "undefined") {
-    posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY!, {
-      api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST!,
-      capture_pageview: false, // manual pageview tracking
-    });
-  }
+import type {
+  PostHogEventName,
+  PostHogEventProperties,
+} from "@/lib/posthog-events";
+
+export function capturePostHogEvent<EventName extends PostHogEventName>(
+  event: EventName,
+  properties: PostHogEventProperties[EventName],
+): void {
+  posthog.capture(event, properties);
 }
 
 // Capture event client-side
-posthog.capture("job_found", {
+capturePostHogEvent("job_found", {
   userId,
   source: "search",
   matchScore: score,
@@ -578,21 +581,37 @@ export const createPostHogServer = () =>
     flushInterval: 0, // no batching — Next.js functions are short-lived
   });
 
-// Always use and shutdown in the same function
-const posthog = createPostHogServer();
-posthog.capture({
-  distinctId: userId,
-  event: "company_researched",
-  properties: { userId, jobId, company },
+export async function capturePostHogServerEvent(
+  distinctId,
+  event,
+  properties,
+) {
+  const posthog = createPostHogServer();
+
+  try {
+    posthog.capture({ distinctId, event, properties });
+  } finally {
+    await posthog.shutdown(); // required — ensures event is sent
+  }
+}
+
+await capturePostHogServerEvent(userId, "company_researched", {
+  userId,
+  jobId,
+  company,
 });
-await posthog.shutdown(); // required — ensures event is sent
 ```
 
 **Rules:**
 
 - Always call `await posthog.shutdown()` in server-side functions — events are lost without it
+- Server-side PostHog failures must be logged and swallowed so analytics cannot block auth, page rendering, or agent work
 - `flushAt: 1` and `flushInterval: 0` always set on server client
+- Browser PostHog uses `/ingest` through the Next.js reverse proxy; `NEXT_PUBLIC_POSTHOG_HOST` remains the proxy destination source of truth in `next.config.ts`
+- Keep `advanced_disable_feature_flags: true` in browser init until the product actually uses PostHog feature flags; this avoids extra `/flags` polling and stale endpoint warnings during auth/login work
+- Keep browser `debug: false` by default. Use PostHog debug tools intentionally when diagnosing analytics, but do not leave noisy network retry logging enabled in normal local development
 - Event names must match exactly the list in `code-standards.md`
+- Use `capturePostHogEvent()` in Client Components and `capturePostHogServerEvent()` in server code instead of raw capture calls
 - Always include `userId` as a property on every server-side event
 - Call `posthog.identify(userId)` after login on client side
 - Call `posthog.reset()` on logout on client side

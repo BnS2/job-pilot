@@ -4,6 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { insforge } from "@/lib/insforge-client";
+import {
+  capturePostHogEvent,
+  resetPostHogUser,
+} from "@/lib/posthog-client";
 
 export function LogoutButton() {
   const router = useRouter();
@@ -11,6 +15,9 @@ export function LogoutButton() {
 
   async function handleLogout(): Promise<void> {
     setIsPending(true);
+
+    capturePostHogEvent("user_signed_out", {});
+    resetPostHogUser();
 
     try {
       await insforge.auth.signOut();

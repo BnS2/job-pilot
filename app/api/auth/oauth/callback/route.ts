@@ -2,6 +2,7 @@ import { createServerClient, setAuthCookies } from "@insforge/sdk/ssr";
 import { NextRequest, NextResponse } from "next/server";
 
 import { requirePublicEnv } from "@/lib/env";
+import { capturePostHogServerEvent } from "@/lib/posthog-server";
 
 type OAuthCallbackRequest = {
   code: string;
@@ -46,6 +47,15 @@ export async function POST(request: NextRequest) {
         { status: 401 },
       );
     }
+
+    const distinctId = request.headers.get("X-POSTHOG-DISTINCT-ID") ?? data.user?.id ?? "anonymous";
+    const sessionId = request.headers.get("X-POSTHOG-SESSION-ID");
+
+    await capturePostHogServerEvent(distinctId, "server_user_signed_in", {
+      userId: data.user?.id,
+      email: data.user?.email,
+      $session_id: sessionId ?? undefined,
+    });
 
     const response = NextResponse.json({
       success: true,

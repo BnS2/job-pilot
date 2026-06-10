@@ -5,6 +5,7 @@ import { LogoutButton } from "@/components/auth/LogoutButton";
 import { Footer } from "@/components/layout/Footer";
 import { Navbar } from "@/components/layout/Navbar";
 import { createInsforgeServer } from "@/lib/insforge-server";
+import { capturePostHogServerEvent } from "@/lib/posthog-server";
 
 export default async function DashboardPage() {
   const insforge = await createInsforgeServer();
@@ -13,6 +14,11 @@ export default async function DashboardPage() {
   if (!data.user) {
     redirect("/login");
   }
+
+  await capturePostHogServerEvent(data.user.id, "dashboard_checkpoint_viewed", {
+    userId: data.user.id,
+    email: data.user.email,
+  });
 
   return (
     <div className="min-h-screen bg-background">

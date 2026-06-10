@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { ProviderIcon } from "@/components/auth/ProviderIcon";
 import { insforge } from "@/lib/insforge-client";
+import { capturePostHogEvent } from "@/lib/posthog-client";
 
 type OAuthProvider = "google" | "github";
 
@@ -20,6 +21,8 @@ export function OAuthButtons() {
     setPendingProvider(provider);
     setErrorMessage(null);
 
+    capturePostHogEvent("oauth_sign_in_started", { provider });
+
     const { error } = await insforge.auth.signInWithOAuth(provider, {
       redirectTo: `${window.location.origin}/callback`,
       additionalParams: provider === "google" ? { prompt: "select_account" } : undefined,
@@ -27,6 +30,7 @@ export function OAuthButtons() {
 
     if (error) {
       console.error("[auth/oauth]", error);
+      capturePostHogEvent("oauth_sign_in_error", { provider, error: String(error) });
       setErrorMessage("We couldn't start sign-in. Please try again.");
       setPendingProvider(null);
     }

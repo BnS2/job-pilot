@@ -1,5 +1,6 @@
 import Image from "next/image";
-import Link from "next/link";
+
+import { HomepageCtaButtons } from "@/components/homepage/HomepageCtaButtons";
 
 export function Hero() {
   return (
@@ -12,20 +13,7 @@ export function Hero() {
           Stop applying blind. JobPilot finds the jobs, researches the
           companies, and gives you everything you need to stand out.
         </p>
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-          <Link
-            href="/login"
-            className="rounded-md bg-overlay px-6 py-3 text-sm font-medium text-accent-foreground"
-          >
-            Get Started <span aria-hidden="true">&gt;</span>
-          </Link>
-          <Link
-            href="/find-jobs"
-            className="rounded-md border border-border bg-surface px-6 py-3 text-sm font-medium text-text-primary"
-          >
-            Find Your First Match
-          </Link>
-        </div>
+        <HomepageCtaButtons source="hero" />
       </div>
 
       <div className="border-t border-border bg-surface-tertiary px-4 py-12 sm:px-12">

@@ -222,6 +222,10 @@ const insforge = await createInsforgeServer();
 
 All PostHog events must use these exact event names. Never invent new event names without adding them here first.
 
+### Product Events
+
+These four events power the JobPilot product analytics and dashboard charts.
+
 | Event                | When                                       | Key Properties             |
 | -------------------- | ------------------------------------------ | -------------------------- |
 | `job_search_started` | Find Jobs button clicked                   | userId, jobTitle, location |
@@ -229,7 +233,30 @@ All PostHog events must use these exact event names. Never invent new event name
 | `profile_completed`  | User saves complete profile for first time | userId                     |
 | `company_researched` | Company research dossier generated         | userId, jobId, company     |
 
-These four events are the only events in this project. Do not add more without updating this list first.
+### Foundation Events
+
+These events were added by the PostHog wizard for homepage and auth-funnel analytics. Keep them limited to marketing/auth surfaces.
+
+| Event                   | When                                             | Key Properties      |
+| ----------------------- | ------------------------------------------------ | ------------------- |
+| `get_started_clicked`   | User clicks the homepage Get Started CTA         | source              |
+| `find_jobs_clicked`     | User clicks the homepage Find Your First Match CTA | source            |
+| `oauth_sign_in_started` | User selects an OAuth provider                   | provider            |
+| `oauth_sign_in_error`   | OAuth sign-in initiation fails before redirect   | provider, error     |
+| `auth_callback_failed`  | OAuth callback fails                             | reason              |
+| `user_signed_in`        | OAuth callback completes on the client           | provider            |
+| `server_user_signed_in` | OAuth token exchange completes on the server     | userId, email       |
+| `user_signed_out`       | User clicks Sign out                             | none                |
+
+### Current App Events
+
+These events cover temporary or existing application surfaces before the full product flows are built.
+
+| Event                         | When                                      | Key Properties |
+| ----------------------------- | ----------------------------------------- | -------------- |
+| `dashboard_checkpoint_viewed` | Authenticated user loads dashboard checkpoint | userId, email |
+
+Do not add more events without updating this list first.
 
 `job_found` powers the Jobs Found Over Time and Match Score Distribution dashboard charts.
 `company_researched` powers the Company Research Activity dashboard chart.
@@ -241,9 +268,10 @@ Always fire these with correct properties.
 
 Environment variables are managed through Varlock.
 
+- **Single local env file:** JobPilot uses `.env` for all local values. Do not create or update `.env.local` for this project.
 - `.env.schema` is the committed source of truth for variable names, descriptions, sensitivity, required status, and validation.
 - `.env` contains local development values and remains gitignored.
-- JobPilot uses `.env` as the single local values file for Varlock. Do not add new project variables to `.env.local`.
+- If a tool or wizard generates `.env.local`, treat it as drift: move any needed variable names into `.env.schema`, put local values in `.env`, and leave real values unprinted.
 - Do not commit `.env`, `.env.local`, decrypted secrets, copied provider keys, or screenshots/logs that expose secret values.
 - Run local development, builds, linting, scripts, and future database tooling through Varlock once it is installed: `varlock run -- <command>`.
 - Use `varlock load` before debugging environment issues so missing or invalid variables are caught before app code runs.
@@ -252,10 +280,12 @@ Environment variables are managed through Varlock.
 
 Current active environment variables:
 
-| Variable                       | Used In                                                       |
-| ------------------------------ | ------------------------------------------------------------- |
-| `NEXT_PUBLIC_INSFORGE_URL`     | `lib/insforge-client.ts`, `lib/insforge-server.ts`, `proxy.ts` |
-| `NEXT_PUBLIC_INSFORGE_ANON_KEY` | `lib/insforge-client.ts`, `lib/insforge-server.ts`, `proxy.ts` |
+| Variable                       | Used In                                                                 |
+| ------------------------------ | ----------------------------------------------------------------------- |
+| `NEXT_PUBLIC_INSFORGE_URL`     | `lib/insforge-client.ts`, `lib/insforge-server.ts`, `proxy.ts`          |
+| `NEXT_PUBLIC_INSFORGE_ANON_KEY` | `lib/insforge-client.ts`, `lib/insforge-server.ts`, `proxy.ts`          |
+| `NEXT_PUBLIC_POSTHOG_KEY`      | `instrumentation-client.ts`, `lib/posthog-server.ts`                    |
+| `NEXT_PUBLIC_POSTHOG_HOST`     | `lib/posthog-server.ts`, `next.config.ts` PostHog reverse-proxy destinations |
 
 `NEXT_PUBLIC_` prefix means the variable is exposed to the browser. Never add `NEXT_PUBLIC_` to secret keys.
 

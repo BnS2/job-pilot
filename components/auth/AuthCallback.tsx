@@ -4,6 +4,24 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import {
+  capturePostHogEvent,
+  capturePostHogException,
+  getPostHogDistinctId,
+  getPostHogSessionId,
+  identifyPostHogUser,
+} from "@/lib/posthog-client";
+
+type OAuthCallbackResponse = {
+  success: boolean;
+  data?: {
+    user?: {
+      id: string;
+      email?: string;
+    };
+  };
+};
+
 const pkceVerifierKey = "insforge_pkce_verifier";
 
 export function AuthCallback() {
@@ -25,13 +43,18 @@ export function AuthCallback() {
 
         if (!code || !codeVerifier) {
           console.error("[auth/callback]", "Missing OAuth code or verifier");
+          capturePostHogEvent("auth_callback_failed", { reason: "missing_code_or_verifier" });
           setHasError(true);
           return;
         }
 
         const response = await fetch("/api/auth/oauth/callback", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "X-POSTHOG-DISTINCT-ID": getPostHogDistinctId(),
+            "X-POSTHOG-SESSION-ID": getPostHogSessionId(),
+          },
           body: JSON.stringify({ code, codeVerifier }),
         });
 
@@ -41,15 +64,26 @@ export function AuthCallback() {
 
         if (!response.ok) {
           console.error("[auth/callback]", "OAuth exchange failed");
+          capturePostHogEvent("auth_callback_failed", { reason: "exchange_failed" });
           setHasError(true);
           return;
         }
+
+        const result: OAuthCallbackResponse = await response.json();
+        const user = result.data?.user;
+
+        if (user?.id) {
+          identifyPostHogUser(user.id, user.email);
+        }
+
+        capturePostHogEvent("user_signed_in", { provider: "oauth" });
 
         sessionStorage.removeItem(pkceVerifierKey);
         window.history.replaceState({}, document.title, window.location.pathname);
         router.replace("/dashboard");
       } catch (error) {
         console.error("[auth/callback]", error);
+        capturePostHogException(error);
 
         if (isMounted) {
           setHasError(true);

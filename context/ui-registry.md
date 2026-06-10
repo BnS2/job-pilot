@@ -61,7 +61,7 @@ Footer mirrors the navbar width with `max-w-[1110px]`, uses the same logo asset,
 ### Homepage Hero
 
 File: `components/homepage/Hero.tsx`
-Last updated: 2026-06-09
+Last updated: 2026-06-10
 
 | Property         | Class                                                                 |
 | ---------------- | --------------------------------------------------------------------- |
@@ -121,7 +121,7 @@ Testimonials use centered copy, an uppercase accent eyebrow, and compact author 
 ### Homepage Bottom CTA
 
 File: `components/homepage/BottomCta.tsx`
-Last updated: 2026-06-09
+Last updated: 2026-06-10
 
 | Property         | Class                                                       |
 | ---------------- | ----------------------------------------------------------- |
@@ -137,6 +137,26 @@ Last updated: 2026-06-09
 
 **Pattern notes:**
 Bottom CTA repeats the hero CTA treatment and soft gradient background to bookend the homepage.
+
+### Homepage CTA Buttons
+
+File: `components/homepage/HomepageCtaButtons.tsx`
+Last updated: 2026-06-10
+
+| Property         | Class                                                       |
+| ---------------- | ----------------------------------------------------------- |
+| Background       | `bg-overlay` primary, `bg-surface` secondary                |
+| Border           | `border border-border` secondary only                       |
+| Border radius    | `rounded-md` for both                                       |
+| Text — primary   | `text-accent-foreground` primary, `text-text-primary` secondary |
+| Text — secondary | none                                                        |
+| Spacing          | `mt-8`, `gap-3` container; `px-6 py-3` each link            |
+| Hover state      | none                                                        |
+| Shadow           | none                                                        |
+| Accent usage     | `bg-overlay text-accent-foreground` primary CTA             |
+
+**Pattern notes:**
+Shared CTA button group extracted from Hero and BottomCta to centralize homepage CTA event capture. Accepts a `source` prop (`"hero"` or `"bottom_cta"`) for analytics. Must always be wrapped in a flex container — the `mt-8` and `gap-3 sm:flex-row` classes handle the existing layout in both parent sections.
 
 ### Login Page
 
@@ -257,3 +277,4 @@ Last updated: 2026-06-10
 
 **Pattern notes:**
 This is a temporary protected checkpoint for testing the auth redirect and logout flow before the full Phase 5 dashboard UI. It uses sibling section cards only and avoids dashboard analytics patterns that belong to the later feature.
+The page now also sends the `dashboard_checkpoint_viewed` PostHog event server-side after confirming the authenticated user; this does not change the visual pattern.

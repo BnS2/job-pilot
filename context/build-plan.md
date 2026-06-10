@@ -73,6 +73,14 @@ Set up PostHog before any events fire. Must be done before any agent features.
 - Initialize PostHog in root app layout — wraps entire app
 - posthog.identify() called after successful login with user ID
 - posthog.reset() called on logout
+- Add `NEXT_PUBLIC_POSTHOG_KEY` and `NEXT_PUBLIC_POSTHOG_HOST` to `.env.schema` before relying on the wizard-generated code locally or in deployment
+- Use the Next.js instrumentation hook and PostHog reverse-proxy rewrites if the wizard installs them
+
+**Agent workflow:**
+
+- Install PostHog MCP for Codex using `npx @posthog/wizard mcp add`
+- Use PostHog MCP for agent-side analytics workflows such as dashboards, insights, SQL, error triage, and feature flag operations
+- MCP is an editor/agent integration only — it is not required for app runtime analytics
 
 ---
 

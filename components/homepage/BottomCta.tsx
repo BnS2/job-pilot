@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { HomepageCtaButtons } from "@/components/homepage/HomepageCtaButtons";
 
 export function BottomCta() {
   return (
@@ -12,19 +12,8 @@ export function BottomCta() {
           Set up your profile, upload your resume, and start finding matches in
           minutes.
         </p>
-        <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-          <Link
-            href="/login"
-            className="rounded-md bg-overlay px-6 py-3 text-sm font-medium text-accent-foreground"
-          >
-            Get Started <span aria-hidden="true">&gt;</span>
-          </Link>
-          <Link
-            href="/find-jobs"
-            className="rounded-md border border-border bg-surface px-6 py-3 text-sm font-medium text-text-primary"
-          >
-            Find Your First Match
-          </Link>
+        <div className="flex justify-center">
+          <HomepageCtaButtons source="bottom_cta" />
         </div>
       </div>
       <div className="landing-section-texture h-16 border-t border-border" />
