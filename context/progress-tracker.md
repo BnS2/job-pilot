@@ -6,9 +6,9 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ## Current Status
 
-**Phase:** Phase 1 — Foundation
-**Last completed:** 03 PostHog Initialization
-**Next:** 04 Database Schema
+**Phase:** Phase 1 — Foundation (complete) → Phase 2 — Profile Page
+**Last completed:** 04 Database Schema
+**Next:** 05 Profile Page — Full UI
 
 ---
 
@@ -20,7 +20,7 @@ Update this file after every completed feature. Any AI agent reading this should
 - [x] 01 Homepage
 - [x] 02 Auth
 - [x] 03 PostHog Initialization
-- [ ] 04 Database Schema
+- [x] 04 Database Schema
 
 ### Phase 2 — Profile Page
 
@@ -58,6 +58,7 @@ Update this file after every completed feature. Any AI agent reading this should
 - 2026-06-10 — Implemented InsForge OAuth auth with `@insforge/sdk/ssr`, using Next.js 16 `proxy.ts` for protected route checks instead of deprecated middleware.
 - 2026-06-10 — Installed PostHog MCP for Codex with `npx @posthog/wizard mcp add`. MCP is for agent-side analytics workflows and does not affect app runtime.
 - 2026-06-10 — Completed PostHog initialization alignment. The wizard-added foundation events are now explicitly allowed in `code-standards.md`, and server-side PostHog captures use a short-lived client with `await shutdown()` before route return.
+- 2026-06-10 — Feature 04 schema decisions: ON DELETE CASCADE from auth.users → profiles → all child tables. Auto-create trigger on auth.users INSERT pre-fills profiles row with email and is_complete=false. RLS uses auth.uid() policies on all four tables. user_id indexes added to jobs, agent_runs, agent_logs for filtered query performance. resume_pdf_key added to profiles alongside resume_pdf_url (InsForge storage requires both url and key). InsForge MCP installed for Antigravity agent via @insforge/install + @insforge/cli link.
 
 ---
 
@@ -70,3 +71,4 @@ Update this file after every completed feature. Any AI agent reading this should
 - 2026-06-10 — PostHog wizard output was folded into this tracker instead of kept as a standalone report. The wizard added `posthog-js`, `posthog-node`, `instrumentation-client.ts`, PostHog reverse-proxy rewrites, homepage CTA captures, auth-funnel captures, server-side sign-in capture, and a Codex MCP setup. `.env.schema` now includes `NEXT_PUBLIC_POSTHOG_KEY` and `NEXT_PUBLIC_POSTHOG_HOST`. The wizard also created PostHog-hosted insights for analytics basics, sign-up conversion, daily sign-ins, provider breakdown, auth errors, and sign-outs.
 - 2026-06-10 — Added typed PostHog client/server helpers in `lib/posthog-client.ts`, `lib/posthog-server.ts`, and `lib/posthog-events.ts`; migrated homepage/auth captures to the helpers; added `dashboard_checkpoint_viewed` for the current authenticated dashboard checkpoint.
 - 2026-06-10 — Follow-up PostHog/local env cleanup: browser PostHog now disables feature flag polling and normal dev debug retry logs because JobPilot does not use flags yet. Environment context now explicitly says `.env` is the only local values file; `.env.local` is wizard/tool drift and should not receive project variables.
+- 2026-06-10 — Feature 04 complete. Created profiles, agent_runs, jobs, agent_logs tables via InsForge MCP run-raw-sql. Created private resumes storage bucket. All tables have RLS enabled with auth.uid() policies. Auto-create profile trigger on auth.users INSERT. Committed as migrations/004_schema.sql (commit aa51ae8).
