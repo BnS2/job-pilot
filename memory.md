@@ -1,43 +1,47 @@
-# Memory — PostHog Review Fixes + Commit Prep
+# Memory — Feature 04 Database Schema Complete
 
-Last updated: 2026-06-10
+Last updated: 2026-06-10 19:05:00
 
 ## What was built
 
-Two review findings from the PostHog Initialization review were addressed:
-
-- **AuthCallback type assertion**: Replaced inline `as { data?: ... }` with a named `OAuthCallbackResponse` type in `components/auth/AuthCallback.tsx`.
-- **HomepageCtaButtons ui-registry entry**: Added a full pattern entry to `context/ui-registry.md` for the shared CTA button group. Also bumped last-updated dates for Hero and BottomCta (refactored to use the component).
-
-The working tree is ready for a single feature commit: `feat: add PostHog analytics initialization and event wiring`.
+- **Feature 04 — Database Schema** is complete and verified:
+  - Created `profiles`, `agent_runs`, `jobs`, and `agent_logs` tables in InsForge DB using MCP `run-raw-sql`.
+  - Configured RLS policies for all 4 tables restricting data access to the corresponding `auth.uid()`.
+  - Configured an `on_auth_user_created` trigger on `auth.users` to automatically insert a new profile row on user signup.
+  - Created private `resumes` storage bucket using MCP `create-bucket`.
+  - Verified all table schemas using MCP `get-table-schema`.
+  - Committed the migration file at [004_schema.sql](file:///Volumes/MM_Extend/0_Code/BnS/job-pilot/migrations/004_schema.sql).
+- **Tracker & Task checklists updated:**
+  - Marked Feature 04 complete in [progress-tracker.md](file:///Volumes/MM_Extend/0_Code/BnS/job-pilot/context/progress-tracker.md).
+  - Marked all schema tasks as done in [task.md](file:///Users/bnsmm/.gemini/antigravity/brain/96da5810-08b3-418f-9c28-321825d3b69a/task.md).
 
 ## Decisions made
 
-- Review findings are resolved inline rather than as separate commits — they affect files already in the working tree.
-- No new code was introduced beyond the two fixes.
+- **Database Management Approach:** Schema modifications are versioned in `migrations/` as SQL files and applied directly using InsForge MCP tools (`run-raw-sql`) rather than CLI commands, adhering to the project's BaaS agent workflow.
+- **Cascade Strategy:** Parent-to-child relationships (`profiles` to child tables) use `ON DELETE CASCADE`. Weak associations (such as `jobs` to `agent_runs` or `agent_logs` to `jobs`) use `ON DELETE SET NULL` to preserve orphan job records when runs are cleared.
+- **SQL Security Standard:** Explicitly configured the trigger function with `SECURITY DEFINER SET search_path = public` to protect against search-path injection vulnerabilities.
 
 ## Problems solved
 
-- HomepageCtaButtons `ui-registry.md` entry — had been missed when the component was created. Now captured with background, border, radius, text, spacing, and accent patterns.
-- AuthCallback type safety — inline type assertion replaced by a declared response type, so it is clear what shape the callback API response has.
+- Correctly added both `resume_pdf_url` and `resume_pdf_key` to `profiles` to support file uploading and deletion in InsForge Storage.
+- Locked down the `resumes` bucket with authenticated-only privacy (`isPublic: false`).
 
 ## Current state
 
-- Both review findings resolved.
-- All Feature 03 changes are uncommitted but complete.
-- Working tree is ready for commit.
+- Phase 1 (Foundation) is fully complete.
+- InsForge Database schema, RLS, and storage structures are ready.
+- Git working tree is clean.
 
 ## Next session starts with
 
-Plan and execute the Feature 03 commit. Then start Feature 04 — Database Schema:
-
-1. Run `/remember restore`.
-2. Read `AGENTS.md` and the required context files in order.
-3. Fetch InsForge docs before any InsForge integration or schema work.
-4. Use InsForge MCP infrastructure tools for schema and bucket setup.
-5. Keep every DB table scoped by `user_id` where required and update `progress-tracker.md` after completing the feature.
+Begin **Phase 2 — Profile Page / Feature 05 — Profile Page — Full UI**:
+1. Run `/remember restore` to restore state.
+2. Build the complete profile page UI using mock data (before wiring real logic):
+   - "Profile needs attention" banner showing missing field warnings and completion ring.
+   - Drag-and-drop resume upload zone.
+   - Sections for Personal Info, Professional Info, Work Experience, Education, and Job Preferences.
+   - A Save Profile button.
 
 ## Open questions
 
-- The PostHog wizard-created hosted insights were noted in project context, but Dashboard Feature 17 still needs real PostHog querying and chart wiring later.
-- OAuth provider configuration should still be validated manually in InsForge provider settings if real browser sign-in fails.
+- None.
