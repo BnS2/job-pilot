@@ -6,9 +6,9 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ## Current Status
 
-**Phase:** Phase 1 — Foundation (complete) → Phase 2 — Profile Page
-**Last completed:** 04 Database Schema
-**Next:** 05 Profile Page — Full UI
+**Phase:** Phase 2 — Profile Page
+**Last completed:** 08 Resume PDF Generation from Profile
+**Next:** 09 Find Jobs Page — Full UI
 
 ---
 
@@ -24,10 +24,10 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ### Phase 2 — Profile Page
 
-- [ ] 05 Profile Page — Full UI
-- [ ] 06 Profile Save Logic
-- [ ] 07 AI Profile Extraction from Resume
-- [ ] 08 Resume PDF Generation from Profile
+- [x] 05 Profile Page — Full UI
+- [x] 06 Profile Save Logic
+- [x] 07 AI Profile Extraction from Resume
+- [x] 08 Resume PDF Generation from Profile
 
 ### Phase 3 — Find Jobs Page
 
@@ -72,3 +72,15 @@ Update this file after every completed feature. Any AI agent reading this should
 - 2026-06-10 — Added typed PostHog client/server helpers in `lib/posthog-client.ts`, `lib/posthog-server.ts`, and `lib/posthog-events.ts`; migrated homepage/auth captures to the helpers; added `dashboard_checkpoint_viewed` for the current authenticated dashboard checkpoint.
 - 2026-06-10 — Follow-up PostHog/local env cleanup: browser PostHog now disables feature flag polling and normal dev debug retry logs because JobPilot does not use flags yet. Environment context now explicitly says `.env` is the only local values file; `.env.local` is wizard/tool drift and should not receive project variables.
 - 2026-06-10 — Feature 04 complete. Created profiles, agent_runs, jobs, agent_logs tables via InsForge MCP run-raw-sql. Created private resumes storage bucket. All tables have RLS enabled with auth.uid() policies. Auto-create profile trigger on auth.users INSERT. Committed as migrations/004_schema.sql (commit aa51ae8).
+- 2026-06-10 — Feature 05 complete. Built `/profile` as a protected mock-data Profile Page matching `context/designs/profile.png`: attention banner with completion ring, resume upload/generate section, full profile information form, and save button. No save, upload, extraction, or generation logic is wired yet.
+- 2026-06-10 — Feature 06 complete. Wired the profile form to InsForge DB and Storage. Implemented client-side resume PDF uploads to private `resumes` bucket with immediate database metadata updates. Computed profile completeness dynamically on the server and client (required fields: full_name, phone, location, work_authorization, current_title, experience_level, years_experience, skills, education, job_titles_seeking, remote_preference). When completeness transitions from incomplete to complete, triggers the `profile_completed` server-side PostHog event. Added resume deletion support to remove files from Storage and clear references in the profiles table.
+- 2026-06-10 — Feature 06 repair pass complete. Replaced loose profile form `any` types with shared profile data types, aligned resume upload with the installed InsForge SDK `.upload(path, file)` signature, and re-verified with `npm run lint`, `npx tsc --noEmit`, and `npx next build`.
+- 2026-06-10 — Feature 06 UI review fix. Editable profile form fields now use the normal `bg-surface` input treatment with consistent muted placeholder styling; only read-only/secondary controls keep `bg-surface-secondary`.
+- 2026-06-10 — Added optional Cover Letter Tone to Job Preferences and profile persistence. The preference is stored for future writing features but does not affect profile completeness; cover-letter generation remains out of scope.
+- 2026-06-10 — Fixed Feature 06 profile persistence after authenticated testing exposed silent zero-row updates. `saveProfile` and resume metadata writes now insert missing profile rows, verify the affected row before returning success, and existing auth users were backfilled via `migrations/005_profile_backfill.sql`.
+- 2026-06-11 — Fixed private resume access. `resume.pdf` now opens through authenticated `/api/profile/resume`, which verifies the current user, reads their `resume_pdf_key`, downloads from the private `resumes` bucket via the server InsForge client, and streams the PDF inline instead of linking directly to a protected storage object URL.
+- 2026-06-11 — Feature 07 complete. Added `GEMINI_API_KEY` to `.env.schema`, installed `@google/genai`, `pdf-parse`, and `zod`, and created the review-first AI resume extraction flow. `/api/resume/extract` verifies the authenticated user, downloads their private resume by `resume_pdf_key`, parses PDF text with `pdf-parse`, sends extracted text to Gemini 3.5 Flash through `agent/extractor.ts`, validates structured profile JSON with Zod, and returns fields to the client without saving. `ProfileClient` now shares draft state between `ResumeUpload` and `ProfileForm`; Extract from Resume appears only after a resume exists and populates the form for manual review/save.
+- 2026-06-11 — Feature 07 reliability fix complete. Resume extraction now prefers MarkItDown (`markitdown` CLI or `python3 -m markitdown`) to convert uploaded PDFs into Markdown before Gemini, then falls back to `pdf-parse` when MarkItDown is unavailable or too sparse. Gemini extraction retries transient availability/rate failures and falls back from `GEMINI_TEXT_MODEL` to `GEMINI_FAST_MODEL`; upstream temporary failures now return 503 instead of invalid-resume 422. Extraction runs write agent_runs / agent_logs entries for local and production debugging.
+- 2026-06-11 — Feature 07 verified in local runtime. Project-local `.venv` now contains MarkItDown, app code checks `.venv/bin/markitdown` before global commands, and `/api/resume/extract` logs the active text extractor (`markitdown` or `pdf-parse`) while keeping the user-facing success message clean. User confirmed the extraction flow is working as intended.
+- 2026-06-12 — Feature 08 complete. Added `@react-pdf/renderer`, `agent/resumeGenerator.ts`, `app/api/resume/generate/ResumeDocument.tsx`, and `app/api/resume/generate/route.ts`. The profile page now has one-click resume generation from saved profile data. `/api/resume/generate` authenticates the user, validates resume-essential profile fields, generates polished structured resume content with Gemini 3.5 Flash, renders an A4 PDF with `renderToBuffer`, uploads it to the private `resumes` bucket, saves the returned `resume_pdf_url` and `resume_pdf_key`, and returns updated metadata to the client. Generation uses the single-active-resume rule and removes the previous active storage object only after the new generated resume is active.
+- 2026-06-12 — Feature 08 reliability fix complete. Resume generation now retries transient Gemini availability/rate/high-demand failures on `GEMINI_TEXT_MODEL` and falls back to `GEMINI_FAST_MODEL` before returning a temporary-service 503. This matches the proven Feature 07 extraction reliability pattern.

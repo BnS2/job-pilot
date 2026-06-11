@@ -175,19 +175,14 @@ const { error } = await insforge
 
 ```typescript
 // Upload file
+const pdfBlob = new Blob([pdfBuffer], { type: "application/pdf" });
 const { data, error } = await insforge.storage
   .from("resumes")
-  .upload(`${userId}/resume.pdf`, fileBuffer, {
-    contentType: "application/pdf",
-    upsert: true, // overwrites existing file
-  });
+  .upload(`${userId}/resume.pdf`, pdfBlob);
 
-// Get public URL
-const { data } = insforge.storage
-  .from("resumes")
-  .getPublicUrl(`${userId}/resume.pdf`);
-
-const url = data.publicUrl;
+// Save both returned values. The SDK may auto-rename on key conflicts.
+const resumePdfUrl = data.url;
+const resumePdfKey = data.key;
 ```
 
 **Storage paths:**
@@ -196,8 +191,10 @@ const url = data.publicUrl;
 
 **Rules:**
 
-- Always use `upsert: true` for base resume uploads — overwrites existing file
-- Always save the public URL back to the DB after upload
+- The current TypeScript SDK upload signature is `.upload(path, file)` and does not accept an upsert option
+- When replacing the active resume from server code, upload the replacement first, save the returned metadata, then remove the previous `resume_pdf_key` only after the new resume is active
+- Always save both the returned `url` and `key` back to the DB after upload because storage may auto-rename if a key conflict remains
+- The `resumes` bucket is private; open resumes through `/api/profile/resume`, which verifies the current user and downloads by `resume_pdf_key`
 - Never write files to disk — always upload buffer directly to storage
 
 ---
@@ -364,12 +361,8 @@ const response = await gemini.models.generateContent({
   config: {
     temperature: 0.3,
     maxOutputTokens: 400,
-    responseFormat: {
-      text: {
-        mimeType: "application/json",
-        schema: matchJsonSchema,
-      },
-    },
+    responseMimeType: "application/json",
+    responseJsonSchema: matchJsonSchema,
   },
 });
 
@@ -395,6 +388,7 @@ const result = matchSchema.parse(JSON.parse(response.text ?? "{}"));
 - Always use structured output for data saved to DB
 - Always validate parsed JSON with Zod before using it
 - Always wrap Gemini calls in try/catch and log failures to agent_logs for agent operations
+- For resume extraction and resume generation, retry transient Gemini errors and fall back from `GEMINI_TEXT_MODEL` to `GEMINI_FAST_MODEL` before returning a temporary-service error
 - Match threshold is always `MATCH_THRESHOLD` from `lib/utils.ts` — never hardcode 70
 - Company research synthesis must always return a complete dossier — never return empty even if web research failed
 
@@ -474,12 +468,8 @@ const response = await gemini.models.generateContent({
   config: {
     temperature: 0.4,
     maxOutputTokens: 1000,
-    responseFormat: {
-      text: {
-        mimeType: "application/json",
-        schema: companyResearchJsonSchema,
-      },
-    },
+    responseMimeType: "application/json",
+    responseJsonSchema: companyResearchJsonSchema,
   },
 });
 
@@ -676,28 +666,111 @@ Only use these — others are silently ignored:
 
 **Check first:** Check AGENTS.md for an installed pdf-parse skill.
 
-### Extract Text from Uploaded Resume
+### Fallback Text Extraction from Uploaded Resume
 
 ```typescript
-import pdf from "pdf-parse";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+
+import { PDFParse } from "pdf-parse";
+
+export const runtime = "nodejs";
+
+const pdfWorkerUrl = pathToFileURL(
+  path.join(process.cwd(), "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"),
+).href;
+
+PDFParse.setWorker(pdfWorkerUrl);
 
 // In API route handling resume upload
 export async function POST(req: NextRequest) {
+  let parser: PDFParse | null = null;
   const formData = await req.formData();
   const file = formData.get("resume") as File;
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
 
-  const pdfData = await pdf(buffer);
-  const extractedText = pdfData.text; // raw text content
+  try {
+    parser = new PDFParse({ data: buffer });
+    const pdfData = await parser.getText();
+    const extractedText = pdfData.text; // raw text content
 
-  // Send to Gemini for structured extraction
+    // Send to Gemini for structured extraction
+  } finally {
+    await parser?.destroy();
+  }
 }
 ```
 
 **Rules:**
 
 - Server-side only — never import in client components
+- `pdf-parse` is the fallback path for resume extraction when MarkItDown is unavailable or returns too little text
+- Use the Node runtime for API routes that parse PDFs
+- Configure the worker with a runtime-resolved `pdfjs-dist/legacy/build/pdf.worker.mjs` file URL; Next/Turbopack dev builds cannot reliably resolve pdf.js' default worker file from server chunks
+- Do not import `pdf-parse/worker` in Next routes; it can pull `@napi-rs/canvas` into production server chunks
 - `pdfData.text` is raw unformatted text — Gemini handles the structure extraction
+- Always call `parser.destroy()` in a `finally` block after parsing
 - Always handle parse errors — some PDFs are image-based and return empty text
 - If `pdfData.text` is empty or very short — return error to user: "Could not extract text from this PDF. Please try a different file."
+
+---
+
+## MarkItDown
+
+**Check first:** Check AGENTS.md for an installed MarkItDown skill or MCP server. If a MarkItDown MCP is installed for the agent, it can be used for manual inspection, but JobPilot runtime extraction uses the local Python CLI/module path.
+
+### Preferred Resume PDF Conversion
+
+MarkItDown is a Python utility from Microsoft for converting PDFs and other documents into Markdown for LLM/text-analysis pipelines. Use it before `pdf-parse` because Markdown preserves useful structure such as headings, lists, links, and tables, and can reduce noisy prompt text.
+
+```typescript
+import { execFile } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+const markitdownCommands = [
+  { command: "markitdown", args: [] },
+  { command: "python3", args: ["-m", "markitdown"] },
+];
+
+async function convertPdfWithMarkitdown(pdfBuffer: Buffer): Promise<string | null> {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "job-pilot-resume-"));
+  const pdfPath = path.join(tempDir, "resume.pdf");
+
+  try {
+    await writeFile(pdfPath, pdfBuffer);
+
+    for (const markitdownCommand of markitdownCommands) {
+      const { stdout } = await execFileAsync(
+        markitdownCommand.command,
+        [...markitdownCommand.args, pdfPath],
+        {
+          timeout: 15000,
+          maxBuffer: 2 * 1024 * 1024,
+        },
+      );
+
+      if (stdout.trim()) return stdout.trim();
+    }
+
+    return null;
+  } finally {
+    await rm(tempDir, { force: true, recursive: true });
+  }
+}
+```
+
+**Rules:**
+
+- Runtime dependency is Python 3.10+ with `requirements.txt` installed
+- Local development installs MarkItDown into project `.venv`; app code checks `.venv/bin/markitdown` before global commands
+- Call the narrow conversion path only: `markitdown <server-created-temp-file>` or `python3 -m markitdown <server-created-temp-file>`
+- Never pass user-controlled file paths or URLs to MarkItDown
+- Always write uploaded bytes to a server-created temp directory and clean that directory in `finally`
+- Always set a timeout and max output buffer for the subprocess
+- If MarkItDown is missing, times out, or returns too little text, fall back to `pdf-parse`
+- Do not use MarkItDown plugins for uploaded resumes unless a later review approves the security/runtime implications

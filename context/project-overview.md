@@ -60,9 +60,10 @@ Full width layout on all pages. No sidebar.
 - User fills profile form — all standard resume fields
 - User uploads their existing resume PDF
 - Two options on upload:
-  - "Extract from Resume" → Gemini 3.5 Flash parses resume text and auto-fills profile form fields
+  - "Extract from Resume" → MarkItDown converts the PDF to Markdown when available, Gemini 3.5 Flash parses the resume content, and the profile form fields auto-fill
   - "Skip" → resume stored as-is, profile unchanged
 - User can manually edit any profile field at any time
+- User can save an optional preferred cover-letter tone for future writing features
 - User can generate a clean professional PDF resume from their current profile data using Gemini 3.5 Flash
 
 ### Finding Jobs — Adzuna Discovery
@@ -196,7 +197,7 @@ Do not build the browser-agent fallback until evidence shows Gemini Search + URL
 
 - Auto apply — agent does not fill or submit application forms
 - URL input for manual job import
-- Cover letter generation
+- Cover letter generation — tone preference is stored, but generation is not built in the current scope
 - Resume tailoring per job
 - Score recalculation after tailoring
 - Previous Job + Next Job navigation

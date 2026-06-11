@@ -21,22 +21,22 @@ After building any component — update this file with the component name, file 
 ### Navbar
 
 File: `components/layout/Navbar.tsx`
-Last updated: 2026-06-09
+Last updated: 2026-06-10
 
 | Property         | Class                                                                 |
 | ---------------- | --------------------------------------------------------------------- |
 | Background       | `bg-surface`                                                          |
 | Border           | `border-b border-border`                                              |
 | Border radius    | `rounded-md` for the CTA button                                       |
-| Text — primary   | `text-text-dark` for nav links                                        |
+| Text — primary   | `text-text-dark` for inactive nav links, `text-accent` for active link |
 | Text — secondary | none                                                                  |
-| Spacing          | `h-16`, `px-4 sm:px-6`, `gap-8`                                       |
+| Spacing          | `h-16`, `px-4 sm:px-6`, `gap-8`, `gap-2`, `py-5`, icon `h-4 w-4`      |
 | Hover state      | none                                                                  |
 | Shadow           | none                                                                  |
-| Accent usage     | `bg-overlay text-accent-foreground` for the Start for free CTA        |
+| Accent usage     | `bg-overlay text-accent-foreground` for CTA, `text-accent` for active link |
 
 **Pattern notes:**
-The top nav is full width with a centered `max-w-[1110px]` inner row. Logo uses the public `logo.png` asset. Primary nav links stay simple text with no underline.
+The top nav can render with either a centered `max-w-[1110px]` inner row or a full-width app layout. Logo uses the public `logo.png` asset. Current implementation supports hiding the CTA for authenticated app pages. Nav links use small token-colored line icons and the active state is color-only, matching `ui-rules.md`.
 
 ### Footer
 
@@ -257,6 +257,106 @@ Last updated: 2026-06-10
 
 **Pattern notes:**
 Logout is a bordered secondary action that clears local InsForge browser state and app-domain SSR cookies before replacing the route with `/login`.
+
+### Profile Completion Indicator
+
+File: `components/profile/CompletionIndicator.tsx`
+Last updated: 2026-06-10
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-surface`                                                          |
+| Border           | `border border-error/20` (incomplete) or `border border-success/20` (complete) |
+| Border radius    | `rounded-xl`, `rounded-full` for status icon and ring                 |
+| Text — primary   | `text-text-primary`, `text-error` (incomplete) or `text-success` (complete) |
+| Text — secondary | `text-text-secondary`                                                 |
+| Spacing          | `p-6`, `gap-6`, `mt-3`, `mt-4`, `gap-2`                               |
+| Hover state      | none                                                                  |
+| Shadow           | `shadow-sm`                                                           |
+| Accent usage     | `text-error`, `bg-error/10` (incomplete) or `text-success`, `bg-success-light` (complete), dynamic inline conic gradient |
+
+**Pattern notes:**
+Accepts dynamic completeness props. Renders a warning style (error theme) with missing tags when incomplete, or a success style (green checkmark theme) when 100% complete. Circular progress ring is rendered dynamically via inline `conic-gradient` style.
+
+### Resume Upload
+
+File: `components/profile/ResumeUpload.tsx`
+Last updated: 2026-06-12
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-surface`, `bg-surface-secondary` for upload zone                  |
+| Border           | `border border-border`, `border-dashed border-border-muted`           |
+| Border radius    | `rounded-xl` for card and drop zone, `rounded-md` for buttons         |
+| Text — primary   | `text-text-primary`                                                   |
+| Text — secondary | `text-text-secondary`                                                 |
+| Spacing          | `p-6`, `mt-1`, `mt-4`, `mt-6`, `px-4 py-8`, `gap-2`, `gap-3`, `gap-4`, `pt-6`, action buttons `h-10 min-w-40 px-4`, upload icon well `h-14 w-14`, upload icon `h-8 w-8` |
+| Hover state      | `hover:bg-surface-secondary`, `hover:bg-error/5`, `hover:bg-accent-dark` |
+| Shadow           | `shadow-sm`                                                           |
+| Accent usage     | `text-accent` upload icon, `bg-accent text-accent-foreground` extraction CTA |
+
+**Pattern notes:**
+Resume upload uses client-side file upload flow via the InsForge browser SDK. Renders as a bordered drag-and-drop dropzone with file validation (PDF only, <= 5MB) when no resume is uploaded. Dropzone icon is a token-colored cloud outline with a separate upward arrow inside a circular white icon well; keep the glyph large enough that it does not collapse into an umbrella-like mark. Swaps to a success card styling when a resume exists, displaying the filename as a link and a "Delete" button. Upload persists the returned storage `url` and `key`; the visible filename opens `/api/profile/resume` so private storage objects are downloaded through an authenticated app route rather than a direct object URL. Delete clears both profile references. The generation action is always available as a bordered secondary button and uses saved profile data. The extraction action appears only in the uploaded state and uses the accent primary button pattern. Footer actions render as a compact toolbar with matching height, no label wrapping, and side-by-side alignment only when there is enough horizontal space. Token-based success/error status banners appear above the resume card.
+
+### Profile Client
+
+File: `components/profile/ProfileClient.tsx`
+Last updated: 2026-06-11
+
+| Property         | Class |
+| ---------------- | ----- |
+| Background       | none  |
+| Border           | none  |
+| Border radius    | none  |
+| Text — primary   | none  |
+| Text — secondary | none  |
+| Spacing          | none  |
+| Hover state      | none  |
+| Shadow           | none  |
+| Accent usage     | none  |
+
+**Pattern notes:**
+Profile Client is a state-only composition wrapper around `ResumeUpload` and `ProfileForm`. It owns draft profile state so resume extraction can populate the form without saving to InsForge. It renders no visual shell and must not introduce layout, color, or spacing classes; page layout remains owned by `/profile`.
+
+### Profile Form
+
+File: `components/profile/ProfileForm.tsx`
+Last updated: 2026-06-10
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-surface` for editable inputs, `bg-surface-secondary` for disabled email/add buttons/role panels, `bg-accent-muted` for skill and industry chips |
+| Border           | `border border-border`, `border-t border-border`, `border-b border-border` |
+| Border radius    | `rounded-xl` for card/role panel, `rounded-md` for inputs/buttons/tags |
+| Text — primary   | `text-text-primary`, `text-text-dark`, `text-accent`                  |
+| Text — secondary | `text-text-secondary`, `placeholder:text-text-muted`                  |
+| Spacing          | `p-6`, `pb-4`, `mt-8`, `mt-10`, `pt-8`, `gap-4`, `px-3`, `py-2`      |
+| Hover state      | `hover:bg-border-light` for add buttons, `hover:text-error` for chip removal, `hover:bg-accent-dark` for primary save |
+| Shadow           | `shadow-sm`                                                           |
+| Accent usage     | `focus:border-accent focus:ring-1 focus:ring-accent`, `bg-accent text-accent-foreground`, `border-accent/20 bg-accent-muted text-accent` for chips |
+
+**Pattern notes:**
+Converted to Client Component to support state management for complex user inputs. Manages typed local lists for skills (tags), industries (tags), education, optional cover-letter tone, and dynamic work experience roles (up to 3). Binds to the Server Action `saveProfile` inside a React `useTransition` for loading state handling. Editable inputs and selects use `bg-surface`; the disabled email field keeps the muted `bg-surface-secondary` treatment and preserved opacity so locked state is visually distinct without showing a text caret. Work experience date fields use a matching `h-5` header row so Start Date and End Date inputs stay horizontally aligned; the "Currently working here" checkbox sits in the End Date header area on desktop but stays after the End Date input in DOM order for keyboard flow. Skill and industry chips use the accent-muted token pattern; semantic missing-field chips remain error-colored.
+
+### Profile Page Shell
+
+File: `app/profile/page.tsx`
+Last updated: 2026-06-10
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-background`                                                       |
+| Border           | none on page shell                                                    |
+| Border radius    | none on page shell                                                    |
+| Text — primary   | inherited from child components                                       |
+| Text — secondary | inherited from child components                                       |
+| Spacing          | `min-h-screen`, `max-w-[920px]`, `gap-8`, `px-4 py-8 sm:px-6`         |
+| Hover state      | none                                                                  |
+| Shadow           | none                                                                  |
+| Accent usage     | delegated to child components                                         |
+
+**Pattern notes:**
+The profile page shell is a protected server-rendered app page that composes Navbar, CompletionIndicator, ResumeUpload, and ProfileForm. It fetches the profile data from the InsForge DB, computes completion metrics dynamically, and passes properties down.
 
 ### Dashboard Auth Checkpoint
 

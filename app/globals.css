@@ -101,3 +101,10 @@ body {
     ),
     var(--color-surface);
 }
+
+.profile-completion-ring {
+  background: conic-gradient(
+    var(--color-error) 0 70%,
+    color-mix(in srgb, var(--color-error) 14%, transparent) 70% 100%
+  );
+}
