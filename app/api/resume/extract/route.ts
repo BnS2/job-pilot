@@ -23,6 +23,7 @@ export async function POST() {
     }
 
     userId = userData.user.id;
+    runId = await startResumeExtractionRun(userId);
 
     const { data: profile, error: profileError } = await insforge.database
       .from("profiles")
@@ -32,6 +33,14 @@ export async function POST() {
 
     if (profileError) {
       console.error("[api/resume/extract] Profile fetch error:", profileError);
+      await logAgentMessage(
+        userId,
+        runId,
+        "error",
+        "Resume extraction failed because the saved profile could not be loaded.",
+      );
+      await finishAgentRun(userId, runId, "failed");
+
       return NextResponse.json(
         { success: false, error: "Failed to locate resume" },
         { status: 500 },
@@ -39,6 +48,14 @@ export async function POST() {
     }
 
     if (!profile?.resume_pdf_key) {
+      await logAgentMessage(
+        userId,
+        runId,
+        "error",
+        "Resume extraction failed because no resume file is attached to the profile.",
+      );
+      await finishAgentRun(userId, runId, "failed");
+
       return NextResponse.json(
         { success: false, error: "Upload a resume before extracting profile details." },
         { status: 400 },
@@ -51,6 +68,14 @@ export async function POST() {
 
     if (downloadError || !resumeBlob) {
       console.error("[api/resume/extract] Download error:", downloadError);
+      await logAgentMessage(
+        userId,
+        runId,
+        "error",
+        "Resume extraction failed because the stored resume could not be downloaded.",
+      );
+      await finishAgentRun(userId, runId, "failed");
+
       return NextResponse.json(
         { success: false, error: "Failed to download resume" },
         { status: 500 },
@@ -60,7 +85,6 @@ export async function POST() {
     const resumeBuffer = Buffer.from(await resumeBlob.arrayBuffer());
     const resumeText = await extractResumeTextFromPdf(resumeBuffer);
     console.info(`[api/resume/extract] Resume text extracted with ${resumeText.source}.`);
-    runId = await startResumeExtractionRun(userId);
 
     await logAgentMessage(
       userId,

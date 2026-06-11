@@ -4,7 +4,7 @@ SELECT
   users.id,
   users.email,
   false,
-  now(),
+  users.created_at,
   now()
 FROM auth.users AS users
 ON CONFLICT (id) DO NOTHING;

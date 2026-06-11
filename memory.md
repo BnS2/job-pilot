@@ -1,52 +1,58 @@
-# Memory — Feature 08 Resume PDF Generation from Profile
+# Memory — Resume Review Follow-Up
 
-Last updated: 2026-06-12 00:32:17 PST
+Last updated: 2026-06-12 01:18:33 PST
 
 ## What was built
 
-- Completed Feature 08 Resume PDF Generation from Profile.
-- Added `@react-pdf/renderer` and generated lockfile updates.
-- Added server-side resume generation:
+- Completed the pasted review follow-up for the Phase 2 profile/resume work.
+- Modified resume storage/profile safety paths:
+  - `actions/profile.ts`
+  - `components/profile/ResumeUpload.tsx`
+  - `app/api/resume/extract/route.ts`
+- Added shared Gemini retry/error helpers in `agent/geminiUtils.ts` and updated:
+  - `agent/extractor.ts`
   - `agent/resumeGenerator.ts`
-  - `app/api/resume/generate/ResumeDocument.tsx`
-  - `app/api/resume/generate/route.ts`
-- Extended agent observability with `startResumeGenerationRun` in `agent/logs.ts`.
-- Updated `components/profile/ResumeUpload.tsx` with a one-click `Generate Resume` action.
-- Cleaned up the resume action toolbar after visual review so Generate/Extract buttons use matching compact sizing and avoid label wrapping.
-- Updated context docs:
+- Improved MarkItDown subprocess error handling in `agent/resumeText.ts`.
+- Added accessibility fixes:
+  - `aria-current="page"` on active nav links in `components/layout/Navbar.tsx`
+  - progressbar ARIA semantics in `components/profile/CompletionIndicator.tsx`
+- Fixed profile completion data flow in `app/profile/page.tsx` so the page uses dynamically calculated `is_complete`, `completionPercentage`, and `missingFields`.
+- Updated documentation/bookkeeping:
+  - `context/architecture.md`
   - `context/library-docs.md`
   - `context/progress-tracker.md`
   - `context/ui-registry.md`
+  - `migrations/005_profile_backfill.sql`
+  - `requirements.txt`
 
 ## Decisions made
 
-- Resume generation uses the saved `profiles` row as source of truth, not unsaved browser form edits.
-- Generated resumes follow the single-active-resume rule: generated PDFs become the active resume referenced by `profiles.resume_pdf_url` and `profiles.resume_pdf_key`.
-- Generation validates resume-essential fields only, not the full profile completion checklist.
-- Generated content may polish wording but must not invent employers, dates, degrees, skills, links, metrics, tools, credentials, or other facts.
-- The generated PDF is rendered server-side with `@react-pdf/renderer` and `renderToBuffer`; React PDF is never imported into client components.
-- Because the current InsForge Storage SDK upload API may auto-rename on key conflict, the route saves returned `url` and `key` as authoritative. The previous active storage object is removed only after the new generated resume is uploaded and profile metadata is updated.
+- The InsForge Storage SDK surface currently exposes upload/download/remove, not object metadata lookup, so resume ownership is enforced by requiring the stored key to be under the authenticated user namespace and the returned URL path to match that key.
+- Failed resume metadata writes now attempt to remove the just-uploaded object before showing the user an error.
+- Resume deletion no longer clears `profiles.resume_pdf_url` / `profiles.resume_pdf_key` if storage deletion fails.
+- Resume extraction runs are created before profile lookup/storage download so early failures can be associated with a run and marked failed.
+- `requirements.txt` pins the locally installed MarkItDown version: `markitdown[pdf]==0.1.6`.
 
 ## Problems solved
 
-- Fixed a visual issue where Generate/Extract buttons looked oversized and cramped in the resume card footer.
-- Fixed Gemini high-demand failures during resume generation by retrying transient availability/rate/high-demand errors on `GEMINI_TEXT_MODEL` and falling back to `GEMINI_FAST_MODEL` before returning a temporary-service 503.
-- Aligned resume generation reliability with the proven Feature 07 extraction retry/fallback pattern.
-- Updated project-specific InsForge storage docs to reflect the installed SDK signature: `.upload(path, file)` without an upsert option.
+- Prevented client-provided resume metadata from being persisted unless it matches the authenticated user-owned storage path.
+- Prevented orphaned storage objects when upload succeeds but profile metadata persistence fails.
+- Prevented DB resume references from being cleared after failed storage deletion.
+- Removed duplicated Gemini retry helpers between extraction and resume generation.
+- MarkItDown conversion no longer swallows unexpected subprocess failures silently; expected missing-command/timeout-style failures still fall back to `pdf-parse`.
+- Preserved original `auth.users.created_at` in `migrations/005_profile_backfill.sql` instead of backfilling profile creation time with `now()`.
+- Added missing `profiles.resume_pdf_key` documentation and fixed markdown code fence language annotations.
 
 ## Current state
 
-- Phase 2 status: Feature 08 complete and reliability-fixed; Feature 09 is next.
-- `/api/resume/generate` authenticates the user, reads saved profile data, validates resume-essential fields, generates structured resume content with Gemini, renders an A4 PDF, uploads it to the private `resumes` bucket, updates profile resume metadata, and returns the updated metadata.
-- `ResumeUpload` now supports upload, delete, extract, and generate flows while keeping private resume access routed through `/api/profile/resume`.
-- `context/progress-tracker.md` records Feature 08 completion and the Gemini retry/fallback reliability fix.
-- `context/ui-registry.md` records the cleaned-up ResumeUpload action toolbar pattern.
-- Verification passed:
+- The review pass found no remaining issues in the changed follow-up code.
+- Validation passed:
+  - `git diff --check`
   - `npm run lint`
   - `npx tsc --noEmit`
-  - `git diff --check`
-  - `npm run build` with network access for Google Fonts
-- There is still a large uncommitted working tree containing Features 05-08, migrations/context updates, dependencies, and memory updates.
+  - `npm run build` with network access for the configured Google Font fetch
+- The working tree is still uncommitted and includes the review follow-up changes plus the existing Phase 2 profile/resume work.
+- There are no known functional blockers in the profile upload/delete/extract/generate flows from this review.
 
 ## Next session starts with
 
@@ -61,4 +67,5 @@ Begin Feature 09 — Find Jobs Page Full UI:
 ## Open questions
 
 - Production deployment still needs a decision on how to install Python dependencies from `requirements.txt` if MarkItDown should be active outside local development.
-- The uncommitted working tree spans multiple completed features; decide whether to review/commit all Phase 2 work together or split it into feature-sized commits.
+- The uncommitted working tree spans multiple completed features and review fixes; decide whether to review/commit all Phase 2 work together or split it into feature-sized commits.
+- There is still no automated test coverage for the storage failure branches added in the review follow-up.

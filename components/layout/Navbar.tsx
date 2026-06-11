@@ -98,6 +98,7 @@ export function Navbar({
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={isActive ? "page" : undefined}
                 className={
                   isActive
                     ? "inline-flex items-center gap-2 py-5 text-accent"

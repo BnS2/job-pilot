@@ -25,6 +25,11 @@ export function CompletionIndicator({ isComplete, completionPercentage, missingF
 
           <div
             className="flex h-32 w-32 shrink-0 items-center justify-center rounded-full"
+            role="progressbar"
+            aria-valuenow={100}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuetext="Profile is 100 percent complete"
             style={{
               background: "conic-gradient(var(--color-success) 0 100%, var(--color-success-light) 100% 100%)",
             }}
@@ -71,6 +76,11 @@ export function CompletionIndicator({ isComplete, completionPercentage, missingF
 
         <div
           className="flex h-32 w-32 shrink-0 items-center justify-center rounded-full"
+          role="progressbar"
+          aria-valuenow={completionPercentage}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuetext={`Profile is ${completionPercentage} percent complete`}
           style={{
             background: `conic-gradient(var(--color-error) 0 ${completionPercentage}%, color-mix(in srgb, var(--color-error) 14%, transparent) ${completionPercentage}% 100%)`,
           }}

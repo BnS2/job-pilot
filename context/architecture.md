@@ -176,7 +176,7 @@ Page data revalidated
 
 ### Resume Extraction (API Route)
 
-```
+```text
 User clicks Extract from Resume
         ↓
 API route in app/api/resume/extract
@@ -190,7 +190,7 @@ Structured fields return to the client for manual review
 
 ### Resume Generation (API Route)
 
-```
+```text
 User clicks Generate Resume from Profile
         ↓
 API route in app/api/resume/generate
@@ -233,6 +233,7 @@ URL saved to profiles table
 | portfolio_url       | text        |                                              |
 | work_authorization  | text        | citizen / permanent_resident / visa_required |
 | resume_pdf_url      | text        | InsForge Storage URL of current resume       |
+| resume_pdf_key      | text        | InsForge Storage key/path of current resume  |
 | is_complete         | boolean     | True when all required fields filled         |
 | created_at          | timestamptz |                                              |
 | updated_at          | timestamptz |                                              |

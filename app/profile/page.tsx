@@ -24,49 +24,36 @@ export default async function ProfilePage() {
     console.error("[app/profile/page] DB error fetching profile:", dbError);
   }
 
-  // Calculate completion and missing fields dynamically
-  const profile = dbProfile
-    ? {
-        ...dbProfile,
-        ...calculateCompleteness(dbProfile),
-      }
-    : {
-        id: data.user.id,
-        email: data.user.email,
-        full_name: "",
-        phone: "",
-        location: "",
-        current_title: "",
-        experience_level: "junior",
-        years_experience: 0,
-        skills: [],
-        industries: [],
-        work_experience: [],
-        education: {},
-        job_titles_seeking: [],
-        remote_preference: "any",
-        preferred_locations: [],
-        salary_expectation: "",
-        cover_letter_tone: "",
-        linkedin_url: "",
-        portfolio_url: "",
-        work_authorization: "citizen",
-        is_complete: false,
-        completionPercentage: 0,
-        missingFields: [
-          "NAME",
-          "PHONE",
-          "LOCATION",
-          "WORK_AUTH",
-          "JOB_TITLE",
-          "EXPERIENCE_LEVEL",
-          "YEARS_EXPERIENCE",
-          "SKILLS",
-          "EDUCATION",
-          "JOB_TITLES_SEEKING",
-          "REMOTE_PREFERENCE",
-        ],
-      };
+  const baseProfile = dbProfile ?? {
+    id: data.user.id,
+    email: data.user.email,
+    full_name: "",
+    phone: "",
+    location: "",
+    current_title: "",
+    experience_level: "junior",
+    years_experience: 0,
+    skills: [],
+    industries: [],
+    work_experience: [],
+    education: {},
+    job_titles_seeking: [],
+    remote_preference: "any",
+    preferred_locations: [],
+    salary_expectation: "",
+    cover_letter_tone: "",
+    linkedin_url: "",
+    portfolio_url: "",
+    work_authorization: "citizen",
+    is_complete: false,
+  };
+  const completeness = calculateCompleteness(baseProfile);
+  const profile = {
+    ...baseProfile,
+    is_complete: completeness.isComplete,
+    completionPercentage: completeness.completionPercentage,
+    missingFields: completeness.missingFields,
+  };
 
   return (
     <div className="min-h-screen bg-background">

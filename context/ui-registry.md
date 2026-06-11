@@ -21,7 +21,7 @@ After building any component — update this file with the component name, file 
 ### Navbar
 
 File: `components/layout/Navbar.tsx`
-Last updated: 2026-06-10
+Last updated: 2026-06-12
 
 | Property         | Class                                                                 |
 | ---------------- | --------------------------------------------------------------------- |
@@ -36,7 +36,7 @@ Last updated: 2026-06-10
 | Accent usage     | `bg-overlay text-accent-foreground` for CTA, `text-accent` for active link |
 
 **Pattern notes:**
-The top nav can render with either a centered `max-w-[1110px]` inner row or a full-width app layout. Logo uses the public `logo.png` asset. Current implementation supports hiding the CTA for authenticated app pages. Nav links use small token-colored line icons and the active state is color-only, matching `ui-rules.md`.
+The top nav can render with either a centered `max-w-[1110px]` inner row or a full-width app layout. Logo uses the public `logo.png` asset. Current implementation supports hiding the CTA for authenticated app pages. Nav links use small token-colored line icons and the active state is color-only, matching `ui-rules.md`. Active nav links expose `aria-current="page"` for assistive technology.
 
 ### Footer
 
@@ -261,7 +261,7 @@ Logout is a bordered secondary action that clears local InsForge browser state a
 ### Profile Completion Indicator
 
 File: `components/profile/CompletionIndicator.tsx`
-Last updated: 2026-06-10
+Last updated: 2026-06-12
 
 | Property         | Class                                                                 |
 | ---------------- | --------------------------------------------------------------------- |
@@ -276,7 +276,7 @@ Last updated: 2026-06-10
 | Accent usage     | `text-error`, `bg-error/10` (incomplete) or `text-success`, `bg-success-light` (complete), dynamic inline conic gradient |
 
 **Pattern notes:**
-Accepts dynamic completeness props. Renders a warning style (error theme) with missing tags when incomplete, or a success style (green checkmark theme) when 100% complete. Circular progress ring is rendered dynamically via inline `conic-gradient` style.
+Accepts dynamic completeness props. Renders a warning style (error theme) with missing tags when incomplete, or a success style (green checkmark theme) when 100% complete. Circular progress ring is rendered dynamically via inline `conic-gradient` style and exposes progressbar ARIA semantics.
 
 ### Resume Upload
 
@@ -296,7 +296,7 @@ Last updated: 2026-06-12
 | Accent usage     | `text-accent` upload icon, `bg-accent text-accent-foreground` extraction CTA |
 
 **Pattern notes:**
-Resume upload uses client-side file upload flow via the InsForge browser SDK. Renders as a bordered drag-and-drop dropzone with file validation (PDF only, <= 5MB) when no resume is uploaded. Dropzone icon is a token-colored cloud outline with a separate upward arrow inside a circular white icon well; keep the glyph large enough that it does not collapse into an umbrella-like mark. Swaps to a success card styling when a resume exists, displaying the filename as a link and a "Delete" button. Upload persists the returned storage `url` and `key`; the visible filename opens `/api/profile/resume` so private storage objects are downloaded through an authenticated app route rather than a direct object URL. Delete clears both profile references. The generation action is always available as a bordered secondary button and uses saved profile data. The extraction action appears only in the uploaded state and uses the accent primary button pattern. Footer actions render as a compact toolbar with matching height, no label wrapping, and side-by-side alignment only when there is enough horizontal space. Token-based success/error status banners appear above the resume card.
+Resume upload uses client-side file upload flow via the InsForge browser SDK. Renders as a bordered drag-and-drop dropzone with file validation (PDF only, <= 5MB) when no resume is uploaded. Dropzone icon is a token-colored cloud outline with a separate upward arrow inside a circular white icon well; keep the glyph large enough that it does not collapse into an umbrella-like mark. Swaps to a success card styling when a resume exists, displaying the filename as a link and a "Delete" button. Upload persists the returned storage `url` and `key`; failed metadata writes remove the just-uploaded object before surfacing the error. The visible filename opens `/api/profile/resume` so private storage objects are downloaded through an authenticated app route rather than a direct object URL. Delete clears both profile references only after storage deletion succeeds. The generation action is always available as a bordered secondary button and uses saved profile data. The extraction action appears only in the uploaded state and uses the accent primary button pattern. Footer actions render as a compact toolbar with matching height, no label wrapping, and side-by-side alignment only when there is enough horizontal space. Token-based success/error status banners appear above the resume card.
 
 ### Profile Client
 
@@ -341,7 +341,7 @@ Converted to Client Component to support state management for complex user input
 ### Profile Page Shell
 
 File: `app/profile/page.tsx`
-Last updated: 2026-06-10
+Last updated: 2026-06-12
 
 | Property         | Class                                                                 |
 | ---------------- | --------------------------------------------------------------------- |

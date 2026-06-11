@@ -732,7 +732,9 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const localMarkitdownPath = path.join(process.cwd(), ".venv", "bin", "markitdown");
 const markitdownCommands = [
+  { command: localMarkitdownPath, args: [] },
   { command: "markitdown", args: [] },
   { command: "python3", args: ["-m", "markitdown"] },
 ];
@@ -768,6 +770,8 @@ async function convertPdfWithMarkitdown(pdfBuffer: Buffer): Promise<string | nul
 
 - Runtime dependency is Python 3.10+ with `requirements.txt` installed
 - Local development installs MarkItDown into project `.venv`; app code checks `.venv/bin/markitdown` before global commands
+- Docker or VM deployments should install Python 3.10+ and run `pip install -r requirements.txt` during image build so the same `.venv/bin/markitdown` or module command is available at runtime.
+- Serverless deployments that cannot ship Python subprocess dependencies may rely on the existing `pdf-parse` fallback, accepting less structured extraction until the broader deployment plan adds a dedicated worker or Python-capable runtime; the open production decision is tracked in `memory.md`.
 - Call the narrow conversion path only: `markitdown <server-created-temp-file>` or `python3 -m markitdown <server-created-temp-file>`
 - Never pass user-controlled file paths or URLs to MarkItDown
 - Always write uploaded bytes to a server-created temp directory and clean that directory in `finally`

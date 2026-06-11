@@ -6,6 +6,19 @@ import { createInsforgeServer } from "@/lib/insforge-server";
 import { capturePostHogServerEvent } from "@/lib/posthog-server";
 import { calculateCompleteness, type ProfileData } from "@/lib/utils";
 
+function isAuthorizedResumeObject(userId: string, url: string, key: string): boolean {
+  if (!key.startsWith(`${userId}/`)) {
+    return false;
+  }
+
+  try {
+    const parsedUrl = new URL(url);
+    return parsedUrl.pathname.includes(`/resumes/objects/${encodeURIComponent(key)}`);
+  } catch {
+    return false;
+  }
+}
+
 export async function saveProfile(profileData: Omit<ProfileData, "is_complete" | "created_at" | "updated_at">) {
   try {
     const insforge = await createInsforgeServer();
@@ -102,6 +115,15 @@ export async function updateProfileResume(url: string, key: string) {
     }
 
     const userId = userData.user.id;
+
+    if (!isAuthorizedResumeObject(userId, url, key)) {
+      console.error("[actions/profile/updateProfileResume] Unauthorized resume metadata:", {
+        userId,
+        key,
+      });
+      return { success: false, error: "Unauthorized" };
+    }
+
     const { data: existingProfile, error: profileFetchError } = await insforge.database
       .from("profiles")
       .select("id")
@@ -183,6 +205,7 @@ export async function deleteProfileResume() {
 
       if (storageError) {
         console.error("[actions/profile/deleteProfileResume] Storage removal error:", storageError);
+        return { success: false, error: "Failed to delete resume file" };
       }
     }
 

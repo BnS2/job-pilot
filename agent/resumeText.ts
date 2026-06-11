@@ -38,6 +38,41 @@ function normalizeExtractedText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
+function getCommandErrorCode(error: unknown): string | null {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return null;
+  }
+
+  const code = error.code;
+  return typeof code === "string" ? code : null;
+}
+
+function getCommandErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getCommandErrorSignal(error: unknown): string | null {
+  if (typeof error !== "object" || error === null || !("signal" in error)) {
+    return null;
+  }
+
+  const signal = error.signal;
+  return typeof signal === "string" ? signal : null;
+}
+
+function wasCommandKilled(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("killed" in error)) {
+    return false;
+  }
+
+  return error.killed === true;
+}
+
+function isExpectedMarkitdownFailure(error: unknown): boolean {
+  const code = getCommandErrorCode(error);
+  return code === "ENOENT" || code === "ETIMEDOUT" || wasCommandKilled(error);
+}
+
 async function extractWithMarkitdown(pdfBuffer: Buffer): Promise<string | null> {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "job-pilot-resume-"));
   const pdfPath = path.join(tempDir, "resume.pdf");
@@ -61,8 +96,16 @@ async function extractWithMarkitdown(pdfBuffer: Buffer): Promise<string | null> 
         if (normalizedText.length >= minimumUsefulTextLength) {
           return normalizedText;
         }
-      } catch {
-        // Missing MarkItDown or a failed conversion is expected in some local/dev environments.
+      } catch (error) {
+        if (!isExpectedMarkitdownFailure(error)) {
+          console.warn("[agent/resumeText] MarkItDown command failed:", {
+            command: markitdownCommand.command,
+            args: markitdownCommand.args,
+            code: getCommandErrorCode(error),
+            signal: getCommandErrorSignal(error),
+            message: getCommandErrorMessage(error),
+          });
+        }
       }
     }
 

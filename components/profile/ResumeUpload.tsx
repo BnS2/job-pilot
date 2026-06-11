@@ -113,6 +113,14 @@ export function ResumeUpload({
         const result = await updateProfileResume(data.url, data.key);
 
         if (!result.success) {
+          const { error: cleanupError } = await insforge.storage
+            .from("resumes")
+            .remove(data.key);
+
+          if (cleanupError) {
+            console.error("[components/profile/ResumeUpload] Uploaded resume cleanup error:", cleanupError);
+          }
+
           setUploadError(result.error || "Failed to update profile resume reference.");
           return;
         }
