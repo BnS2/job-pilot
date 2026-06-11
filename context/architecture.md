@@ -12,6 +12,7 @@
 | Job Discovery                  | Adzuna API               | Job search and discovery                         |
 | AI model                       | Gemini 3.5 Flash         | Matching, research synthesis, extraction         |
 | Analytics                      | PostHog                  | Event tracking and dashboard charts              |
+| PDF-to-Markdown extraction     | MarkItDown               | Preferred resume PDF text conversion for LLM input |
 | PDF generation                 | @react-pdf/renderer      | Resume PDF rendering                             |
 | Styling                        | Tailwind CSS + shadcn/ui | UI components and styling                        |
 | Language                       | TypeScript strict        | Throughout                                       |
@@ -173,14 +174,28 @@ Dossier saved to jobs.company_research
 Page data revalidated
 ```
 
-### Resume Operations (API Routes)
+### Resume Extraction (API Route)
 
+```text
+User clicks Extract from Resume
+        ↓
+API route in app/api/resume/extract
+        ↓
+MarkItDown converts uploaded PDF to Markdown when available; pdf-parse is the fallback
+        ↓
+Gemini 3.5 Flash extracts profile fields, with retry and Gemini Flash-Lite fallback for transient provider pressure
+        ↓
+Structured fields return to the client for manual review
 ```
-User uploads resume or clicks Generate
+
+### Resume Generation (API Route)
+
+```text
+User clicks Generate Resume from Profile
         ↓
-API route in app/api/resume/
+API route in app/api/resume/generate
         ↓
-Gemini 3.5 Flash processes content
+Gemini 3.5 Flash generates resume content
         ↓
 @react-pdf/renderer renders PDF buffer
         ↓
@@ -213,11 +228,12 @@ URL saved to profiles table
 | remote_preference   | text        | remote / onsite / hybrid / any               |
 | preferred_locations | text[]      | Optional preferred locations                 |
 | salary_expectation  | text        | Optional                                     |
-| cover_letter_tone   | text        | formal / casual / enthusiastic               |
+| cover_letter_tone   | text        | Optional: formal / casual / enthusiastic     |
 | linkedin_url        | text        |                                              |
 | portfolio_url       | text        |                                              |
 | work_authorization  | text        | citizen / permanent_resident / visa_required |
 | resume_pdf_url      | text        | InsForge Storage URL of current resume       |
+| resume_pdf_key      | text        | InsForge Storage key/path of current resume  |
 | is_complete         | boolean     | True when all required fields filled         |
 | created_at          | timestamptz |                                              |
 | updated_at          | timestamptz |                                              |
@@ -354,6 +370,22 @@ export const GEMINI_FAST_MODEL = "gemini-3.1-flash-lite";
 
 Use `gemini-3.5-flash` by default for matching, extraction, resume generation, and dossier synthesis because it is the newer free-tier text model. Use `gemini-2.5-flash` only for the company web research call because Google Search grounding is free on 2.5 Flash up to the documented daily limit. Use `gemini-3.1-flash-lite` only for low-risk high-volume text calls if rate limits become tight.
 
+Resume extraction retries transient Gemini failures before falling back from `GEMINI_TEXT_MODEL` to `GEMINI_FAST_MODEL`. Temporary provider failures return a temporary-service response to the client instead of being treated as invalid resume content.
+
+## Resume Text Extraction Pattern
+
+Uploaded resume PDFs are converted to LLM input in `agent/resumeText.ts`. MarkItDown is preferred because it emits Markdown intended for LLM and text-analysis pipelines, preserving useful document structure while often reducing prompt noise. It runs the local MarkItDown CLI/module against a server-created temporary PDF file only. The original upload path is never passed through from user input.
+
+If MarkItDown is unavailable, times out, or returns too little text, JobPilot falls back to `pdf-parse` with an explicit pdf.js worker file URL. This keeps extraction usable in local or deployment environments that have not installed Python dependencies yet.
+
+Runtime requirements:
+
+- Node route runtime only — PDF conversion uses `Buffer`, temp files, and child processes
+- Python 3.10+ for MarkItDown
+- Install Python dependencies from `requirements.txt`
+- Keep temp-file cleanup in `finally`
+- Treat MarkItDown MCP as an agent convenience if installed, not an application runtime dependency
+
 ---
 
 ## Job Discovery Pattern
@@ -414,12 +446,8 @@ const dossierResponse = await gemini.models.generateContent({
   }),
   config: {
     temperature: 0.4,
-    responseFormat: {
-      text: {
-        mimeType: "application/json",
-        schema: companyResearchJsonSchema,
-      },
-    },
+    responseMimeType: "application/json",
+    responseJsonSchema: companyResearchJsonSchema,
   },
 });
 ```

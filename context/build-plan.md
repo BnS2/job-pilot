@@ -151,9 +151,12 @@ Extract from Resume button — Gemini 3.5 Flash reads uploaded PDF text and auto
 
 **Logic:**
 
-- pdf-parse extracts raw text from uploaded PDF buffer
+- MarkItDown converts the uploaded PDF buffer into Markdown when available to preserve useful structure and reduce prompt noise
+- pdf-parse extracts raw text as a fallback when MarkItDown is unavailable or returns too little text
 - If extracted text is empty or too short — return error: "Could not extract text from this PDF. Please try a different file."
 - Gemini 3.5 Flash reads extracted text and returns structured JSON matching all profile field names
+- Transient Gemini 503 / rate / availability errors retry and then fall back to Gemini Flash-Lite before returning a temporary-service error
+- Resume extraction attempts are logged to agent_runs / agent_logs for debugging
 - Form fields populated with extracted data
 - User saves manually after reviewing
 
