@@ -79,6 +79,17 @@ export function formatJobType(jobType: string | null): string {
 }
 
 export function getApplyUrl(job: JobDetailsRecord): string | null {
-  const url = job.external_apply_url?.trim() || job.source_url?.trim() || "";
-  return url || null;
+  const candidate = job.external_apply_url?.trim() || job.source_url?.trim() || "";
+
+  if (!candidate) {
+    return null;
+  }
+
+  try {
+    const parsedUrl = new URL(candidate);
+    const protocol = parsedUrl.protocol.toLowerCase();
+    return protocol === "http:" || protocol === "https:" ? parsedUrl.toString() : null;
+  } catch {
+    return null;
+  }
 }

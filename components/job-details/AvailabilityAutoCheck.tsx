@@ -23,6 +23,10 @@ export function AvailabilityAutoCheck({ currentStatus, jobId }: Props) {
   const router = useRouter();
 
   useEffect(() => {
+    if (currentStatus !== "active") {
+      return;
+    }
+
     const controller = new AbortController();
 
     const checkAvailability = async (): Promise<void> => {
@@ -40,8 +44,7 @@ export function AvailabilityAutoCheck({ currentStatus, jobId }: Props) {
         if (
           response.ok &&
           parsedData.success === true &&
-          parsedData.status === "unavailable" &&
-          currentStatus !== "unavailable"
+          parsedData.status === "unavailable"
         ) {
           router.refresh();
         }

@@ -47,7 +47,9 @@ export default async function JobDetailsPage({ params }: JobDetailsPageProps) {
 
   const { data: job, error } = await insforge.database
     .from("jobs")
-    .select("*")
+    .select(
+      "id,company,title,location,salary,job_type,external_apply_url,source_url,about_role,match_score,match_reason,matched_skills,missing_skills,found_at,status",
+    )
     .eq("id", id)
     .eq("user_id", userId)
     .maybeSingle();

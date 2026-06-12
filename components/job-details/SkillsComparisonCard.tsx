@@ -14,10 +14,10 @@ export function SkillsComparisonCard({ matchedSkills, missingSkills }: Props) {
         <p className="text-xs font-medium leading-4 text-text-muted">You have</p>
         <div className="mt-3 flex flex-wrap gap-2">
           {matchedSkills.length > 0 ? (
-            matchedSkills.map((skill) => (
+            matchedSkills.map((skill, index) => (
               <span
                 className="rounded-full bg-success-lightest px-3 py-1 text-xs font-medium leading-4 text-success-foreground"
-                key={skill}
+                key={`${skill}-${index}`}
               >
                 + {skill}
               </span>
@@ -34,10 +34,10 @@ export function SkillsComparisonCard({ matchedSkills, missingSkills }: Props) {
         <p className="text-xs font-medium leading-4 text-text-muted">Gap skills</p>
         <div className="mt-3 flex flex-wrap gap-2">
           {missingSkills.length > 0 ? (
-            missingSkills.map((skill) => (
+            missingSkills.map((skill, index) => (
               <span
                 className="rounded-full bg-accent-muted px-3 py-1 text-xs font-medium leading-4 text-accent"
-                key={skill}
+                key={`${skill}-${index}`}
               >
                 x {skill}
               </span>

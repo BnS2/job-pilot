@@ -241,7 +241,6 @@ async function saveOrRefreshJob(record: JobInsertRecord): Promise<string | null>
         match_reason: record.match_reason,
         matched_skills: record.matched_skills,
         missing_skills: record.missing_skills,
-        found_at: record.found_at,
         last_seen_at: record.last_seen_at,
         ...statusUpdate,
       })

@@ -21,18 +21,24 @@ type StatusUpdate = {
   completed_at: string | null;
 };
 
-function buildStatusUpdate(status: JobStatus): StatusUpdate {
+function buildStatusUpdate(status: JobStatus, current: StatusUpdate): StatusUpdate {
   const now = new Date().toISOString();
 
   return {
     status,
     status_reason: null,
-    unavailable_at: status === "unavailable" ? now : null,
-    archived_at: status === "archived" ? now : null,
-    applied_at: status === "applied" ? now : null,
-    rejected_at: status === "rejected" ? now : null,
-    completed_at: status === "completed" ? now : null,
+    unavailable_at:
+      status === "unavailable" ? current.unavailable_at ?? now : current.unavailable_at,
+    archived_at: status === "archived" ? current.archived_at ?? now : current.archived_at,
+    applied_at: status === "applied" ? current.applied_at ?? now : current.applied_at,
+    rejected_at: status === "rejected" ? current.rejected_at ?? now : current.rejected_at,
+    completed_at:
+      status === "completed" ? current.completed_at ?? now : current.completed_at,
   };
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
 }
 
 export async function updateJobStatus(
@@ -53,7 +59,9 @@ export async function updateJobStatus(
 
     const { data: existingJob, error: readError } = await insforge.database
       .from("jobs")
-      .select("id,status")
+      .select(
+        "id,status,status_reason,unavailable_at,archived_at,applied_at,rejected_at,completed_at",
+      )
       .eq("id", jobId)
       .eq("user_id", authData.user.id)
       .maybeSingle();
@@ -67,13 +75,23 @@ export async function updateJobStatus(
       return { success: false, error: "This job could not be found." };
     }
 
-    const previousStatus = isJobStatus(String(existingJob.status))
-      ? String(existingJob.status)
+    const rawPreviousStatus = String(existingJob.status);
+    const previousStatus: JobStatus = isJobStatus(rawPreviousStatus)
+      ? rawPreviousStatus
       : "active";
+    const currentStatusUpdate: StatusUpdate = {
+      status: previousStatus,
+      status_reason: stringOrNull(existingJob.status_reason),
+      unavailable_at: stringOrNull(existingJob.unavailable_at),
+      archived_at: stringOrNull(existingJob.archived_at),
+      applied_at: stringOrNull(existingJob.applied_at),
+      rejected_at: stringOrNull(existingJob.rejected_at),
+      completed_at: stringOrNull(existingJob.completed_at),
+    };
 
     const { error: updateError } = await insforge.database
       .from("jobs")
-      .update(buildStatusUpdate(nextStatus))
+      .update(buildStatusUpdate(nextStatus, currentStatusUpdate))
       .eq("id", jobId)
       .eq("user_id", authData.user.id);
 

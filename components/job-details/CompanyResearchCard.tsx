@@ -23,7 +23,9 @@ export function CompanyResearchCard({ company }: Props) {
           </h2>
         </div>
         <button
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-accent px-4 text-sm font-semibold leading-5 text-accent-foreground"
+          aria-disabled="true"
+          className="inline-flex h-10 cursor-not-allowed items-center justify-center gap-2 rounded-md bg-surface-secondary px-4 text-sm font-semibold leading-5 text-text-muted"
+          disabled
           type="button"
         >
           <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
@@ -54,7 +56,7 @@ export function CompanyResearchCard({ company }: Props) {
           No research yet
         </p>
         <p className="mt-2 max-w-[340px] text-sm font-medium leading-5 text-text-muted">
-          Click &quot;Research Company&quot; to let the AI browse {company}&apos;s public pages and build a dossier.
+          Company research for {company} has not been generated yet.
         </p>
       </div>
     </section>

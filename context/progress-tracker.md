@@ -6,7 +6,7 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ## Current Status
 
-**Phase:** Phase 3 — Find Jobs Page
+**Phase:** Phase 4 — Job Details Page
 **Last completed:** 13 Job Details Page — Full UI
 **Next:** 14 Company Research Agent
 
