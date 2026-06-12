@@ -1,59 +1,74 @@
-# Memory — JobPilot Find Jobs + Lifecycle Scope
+# Memory — JobPilot Review Follow-Up
 
-Last updated: 2026-06-12 21:01 PST
+Last updated: 2026-06-12 22:37 PST
 
 ## What was built
 
-Feature 11 — Filter + Sort + Pagination is complete.
+Completed a review-fix pass against the current code. Still-valid findings were fixed in:
 
-- `/find-jobs` now reads real jobs from InsForge for the authenticated user.
-- Filtering, sorting, debounced text search, pagination, and latest-run scoping are wired.
-- Successful Find Jobs searches route to `/find-jobs?run={runId}` so the immediate results view is scoped to the latest run instead of mixing all saved jobs.
-- Auth expiry handling was tightened with shared client helpers, `AuthSessionGuard`, protected route redirects, and refresh-cookie cleanup.
-
-This session also updated project context docs to add lifecycle/stale-listing handling as a first-class requirement:
-
-- `context/project-overview.md`
+- `app/api/agent/find/route.ts`
+- `app/api/auth/refresh/route.ts`
+- `app/find-jobs/page.tsx`
+- `components/find-jobs/JobsTable.tsx`
+- `lib/auth-client.ts`
+- `lib/adzuna.ts`
+- `agent/adzuna.ts`
+- `proxy.ts`
 - `context/architecture.md`
 - `context/build-plan.md`
 - `context/library-docs.md`
-- `context/code-standards.md`
+- `context/ui-registry.md`
 - `context/progress-tracker.md`
+
+Specific outcomes:
+
+- Search-start PostHog capture is best-effort and no longer blocks Adzuna discovery.
+- `/api/auth/refresh` returns 500 on unexpected exceptions without clearing cookies; confirmed auth failures still clear cookies.
+- `/find-jobs` login redirects preserve query params, paginated DB ordering is deterministic with `id` as a secondary sort, and DB failures render an explicit token-styled error card instead of an empty jobs table.
+- `JobsTable` now handles invalid dates and null `source` values safely.
+- `clearExpiredSession()` now throws when `/api/auth/logout` fails so callers can detect cleanup failure.
+- Adzuna search requests now use a 5-second `AbortController` timeout and translate aborts into a clear timeout error.
+- `proxy.ts` wraps `updateSession()` in try/catch and redirects to login with cookie cleanup on unexpected session update errors.
+- Agent success copy now reports found jobs, saved jobs, and strong matches.
+- Context docs were corrected for applied-job lifecycle exclusion, InsForge storage upload replacement flow, and one-sided Adzuna salary ranges.
 
 ## Decisions made
 
-- Saved jobs are a persistent user pipeline, not disposable search results.
-- Default user-facing job lists should focus on active opportunities.
-- Stale, closed, unavailable, archived, applied, rejected, and completed jobs should be soft-hidden from the default active list, not hard-deleted.
-- New Adzuna searches should eventually upsert matching external listings instead of creating cross-run duplicates.
-- Job lifecycle statuses are now in scope: `active`, `unavailable`, `archived`, `applied`, `rejected`, `completed`.
-- Feature 12 is now “Job Lifecycle + Stale Listing Handling,” inserted before Job Details and Dashboard work.
+- Review comments were verified against current code before changing anything; none of the attached findings were stale.
+- `/find-jobs` DB failures should be visible as a page-level load error while preserving the search/filter controls, not hidden behind empty-state UI.
+- InsForge Storage replacement guidance remains upload-new-first: persist the new `url` and `key`, then remove the previous active object only after the new metadata is active. Do not use an `upsert` upload option.
 
 ## Problems solved
 
-- Clarified why role/job lists appeared to pile up: searches persist rows in `jobs`; previous behavior lacked cross-run dedupe/upsert and relied on `run` URL scoping for latest-search display.
-- Turned that concern into explicit product architecture instead of leaving it as an implementation ambiguity.
-- Updated dashboard planning so primary metrics count active opportunities, not stale or completed historical rows.
+- Prevented analytics outages from breaking job search.
+- Prevented transient refresh-route exceptions from forcing sign-out and cookie deletion.
+- Removed non-deterministic pagination when rows tie on match score or found date.
+- Stopped malformed `found_at` values from leaking confusing date output into the jobs table.
+- Added a deterministic timeout for slow/hung Adzuna requests.
+- Reconciled docs that still implied unsupported storage upload upsert behavior.
 
 ## Current state
 
-- `context/progress-tracker.md` says current phase is Phase 3 — Find Jobs Page.
-- Last completed feature is 11 Filter + Sort + Pagination.
-- Next planned feature is 12 Job Lifecycle + Stale Listing Handling.
-- Working tree is still uncommitted and includes many prior feature/auth/find-jobs changes plus the lifecycle context updates.
-- No tests were run for the lifecycle docs update because it was documentation/context only.
+- Working tree is dirty with the review-fix changes listed above.
+- Validation passed:
+  - `npm run lint`
+  - `npx tsc --noEmit`
+  - `npm run build`
+- The first sandboxed `npm run build` failed only because Next.js needed network access to fetch the Google-hosted Inter font. The build passed after rerunning with network approval.
+- `context/progress-tracker.md` still shows Phase 3 with Feature 11 complete and Feature 12 — Job Lifecycle + Stale Listing Handling — next.
 
 ## Next session starts with
 
 1. Run `/remember restore`.
-2. Read the required context files from `AGENTS.md` in order.
-3. Start Feature 12 from `context/build-plan.md`: add job lifecycle schema/migration, status filtering, status actions, availability refresh rules, and Adzuna cross-run upsert behavior.
-4. Use InsForge docs/skill before touching backend schema or SDK code.
+2. Read the required AGENTS/context files in order before implementation.
+3. Decide whether to commit the current dirty working tree before starting Feature 12.
+4. Start Feature 12 from `context/build-plan.md`: lifecycle schema/migration, status filtering, status actions, availability refresh rules, and Adzuna cross-run upsert behavior.
+5. Use the InsForge skills/docs before touching backend schema, SQL, or SDK code.
 
 ## Open questions
 
-- Decide whether to commit the accumulated uncommitted work before implementing Feature 12.
-- Define exact UX placement for status filter/actions when implementing lifecycle UI.
-- Decide how aggressive availability checks should be in v1, especially for ambiguous redirects, bot blocks, rate limits, and timeouts.
-- Production deployment decision on Python/MarkItDown dependencies remains unresolved.
-- Full `?next=` post-login routing through OAuth callback still needs a follow-up design decision.
+- Whether to commit the accumulated review-fix work separately before Feature 12.
+- Exact UX placement for job status filters and lifecycle actions.
+- How conservative v1 availability checks should be for ambiguous redirects, bot blocks, rate limits, and timeouts.
+- Production deployment approach for Python/MarkItDown dependencies remains unresolved.
+- Full `?next=` preservation through the OAuth callback still needs a follow-up design decision.

@@ -9,6 +9,19 @@ export type PostHogEventProperties = {
     source: "search" | "url";
     matchScore: number;
   };
+  job_status_changed: {
+    userId: string;
+    jobId: string;
+    fromStatus: string;
+    toStatus: string;
+    reason: string;
+  };
+  job_unavailable_detected: {
+    userId: string;
+    jobId: string;
+    source: string;
+    reason: string | null;
+  };
   profile_completed: {
     userId: string;
   };

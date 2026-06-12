@@ -6,12 +6,14 @@ import { JobsTable } from "@/components/find-jobs/JobsTable";
 import { SearchControls } from "@/components/find-jobs/SearchControls";
 import { Navbar } from "@/components/layout/Navbar";
 import { createInsforgeServer } from "@/lib/insforge-server";
+import { isJobStatus, type JobStatus } from "@/lib/utils";
 
 type FindJobsPageProps = {
   searchParams: Promise<{
     q?: string | string[];
     match?: string | string[];
     sort?: string | string[];
+    status?: string | string[];
     page?: string | string[];
     run?: string | string[];
   }>;
@@ -46,6 +48,18 @@ function normalizeSortParam(value: string): "match" | "newest" | "oldest" {
   }
 
   return "match";
+}
+
+function normalizeStatusParam(value: string): JobStatus | "all" {
+  if (value === "all") {
+    return "all";
+  }
+
+  if (isJobStatus(value)) {
+    return value;
+  }
+
+  return "active";
 }
 
 function parsePageParam(value: string | undefined): number {
@@ -107,7 +121,11 @@ export default async function FindJobsPage({ searchParams }: FindJobsPageProps) 
   const q = normalizeTextSearchParam(rawQ);
   const match = normalizeMatchParam(firstParam(parsedParams.match) || "all");
   const sort = normalizeSortParam(firstParam(parsedParams.sort) || "match");
+  const status = normalizeStatusParam(firstParam(parsedParams.status) || "active");
   const run = firstParam(parsedParams.run) || "";
+  const isValidRunUuid =
+    run.trim() &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(run.trim());
   const page = parsePageParam(firstParam(parsedParams.page));
   const pageSize = 20;
 
@@ -123,8 +141,12 @@ export default async function FindJobsPage({ searchParams }: FindJobsPageProps) 
     .select("*", { count: "exact" })
     .eq("user_id", authData.user.id);
 
-  if (run.trim()) {
+  if (isValidRunUuid) {
     dbQuery = dbQuery.eq("run_id", run.trim());
+  }
+
+  if (status !== "all") {
+    dbQuery = dbQuery.eq("status", status);
   }
 
   if (q) {
@@ -166,7 +188,7 @@ export default async function FindJobsPage({ searchParams }: FindJobsPageProps) 
         <Navbar activePath="/find-jobs" fullWidth showCta={false} />
         <main className="mx-auto flex max-w-[1440px] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-12">
           <SearchControls />
-          <JobFilters key={q} q={q} match={match} sort={sort} />
+          <JobFilters key={`${q}-${status}`} q={q} match={match} sort={sort} status={status} />
           <section className="rounded-xl border border-border bg-surface p-6 shadow-sm">
             <h2 className="text-base font-semibold leading-6 text-text-primary">
               Jobs could not be loaded
@@ -193,12 +215,13 @@ export default async function FindJobsPage({ searchParams }: FindJobsPageProps) 
       <Navbar activePath="/find-jobs" fullWidth showCta={false} />
       <main className="mx-auto flex max-w-[1440px] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-12">
         <SearchControls />
-        <JobFilters key={q} q={q} match={match} sort={sort} />
+        <JobFilters key={`${q}-${status}`} q={q} match={match} sort={sort} status={status} />
         <JobsTable
           jobs={jobs ?? []}
           page={page}
           pageSize={pageSize}
           totalCount={totalCount}
+          status={status}
         />
       </main>
     </div>

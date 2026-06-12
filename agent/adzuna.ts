@@ -42,6 +42,7 @@ type DiscoverJobsInput = {
 type JobInsertRecord = {
   user_id: string;
   run_id: string | null;
+  source_job_id: string;
   source: "search";
   source_url: string;
   external_apply_url: string;
@@ -61,6 +62,15 @@ type JobInsertRecord = {
   matched_skills: string[];
   missing_skills: string[];
   found_at: string;
+  last_seen_at: string;
+  status: "active";
+  unavailable_at: null;
+  status_reason: null;
+};
+
+type ExistingJobRecord = {
+  id: string;
+  status: string | null;
 };
 
 function hasText(value: string | null | undefined): value is string {
@@ -105,9 +115,12 @@ function toJobRecord(
   matchedSkills: string[],
   missingSkills: string[],
 ): JobInsertRecord {
+  const now = new Date().toISOString();
+
   return {
     user_id: userId,
     run_id: runId,
+    source_job_id: job.id,
     source: "search",
     source_url: job.redirectUrl,
     external_apply_url: job.redirectUrl,
@@ -126,8 +139,137 @@ function toJobRecord(
     match_reason: matchReason,
     matched_skills: matchedSkills,
     missing_skills: missingSkills,
-    found_at: new Date().toISOString(),
+    found_at: now,
+    last_seen_at: now,
+    status: "active",
+    unavailable_at: null,
+    status_reason: null,
   };
+}
+
+function shouldRestoreToActive(status: string | null): boolean {
+  return status === null || status === "unavailable";
+}
+
+async function findExistingJob(
+  userId: string,
+  sourceJobId: string,
+  sourceUrl: string,
+): Promise<ExistingJobRecord | null> {
+  const insforge = await createInsforgeServer();
+
+  if (sourceJobId.trim()) {
+    const { data, error } = await insforge.database
+      .from("jobs")
+      .select("id,status")
+      .eq("user_id", userId)
+      .eq("source", "search")
+      .eq("source_job_id", sourceJobId)
+      .maybeSingle();
+
+    if (error) {
+      console.error("[agent/adzuna] Existing job lookup by provider ID failed:", error);
+    } else if (data?.id) {
+      return {
+        id: String(data.id),
+        status: typeof data.status === "string" ? data.status : null,
+      };
+    }
+  }
+
+  for (const urlColumn of ["source_url", "external_apply_url"]) {
+    const { data, error } = await insforge.database
+      .from("jobs")
+      .select("id,status")
+      .eq("user_id", userId)
+      .eq("source", "search")
+      .eq(urlColumn, sourceUrl)
+      .maybeSingle();
+
+    if (error) {
+      console.error(`[agent/adzuna] Existing job lookup by ${urlColumn} failed:`, error);
+      continue;
+    }
+
+    if (data?.id) {
+      return {
+        id: String(data.id),
+        status: typeof data.status === "string" ? data.status : null,
+      };
+    }
+  }
+
+  return null;
+}
+
+async function saveOrRefreshJob(record: JobInsertRecord): Promise<string | null> {
+  const insforge = await createInsforgeServer();
+  const existingJob = await findExistingJob(
+    record.user_id,
+    record.source_job_id,
+    record.source_url,
+  );
+
+  if (existingJob) {
+    const statusUpdate = shouldRestoreToActive(existingJob.status)
+      ? {
+          status: "active",
+          unavailable_at: null,
+          status_reason: null,
+        }
+      : {};
+
+    const { data, error } = await insforge.database
+      .from("jobs")
+      .update({
+        run_id: record.run_id,
+        source_job_id: record.source_job_id,
+        source_url: record.source_url,
+        external_apply_url: record.external_apply_url,
+        title: record.title,
+        company: record.company,
+        location: record.location,
+        salary: record.salary,
+        job_type: record.job_type,
+        about_role: record.about_role,
+        responsibilities: record.responsibilities,
+        requirements: record.requirements,
+        nice_to_have: record.nice_to_have,
+        benefits: record.benefits,
+        about_company: record.about_company,
+        match_score: record.match_score,
+        match_reason: record.match_reason,
+        matched_skills: record.matched_skills,
+        missing_skills: record.missing_skills,
+        found_at: record.found_at,
+        last_seen_at: record.last_seen_at,
+        ...statusUpdate,
+      })
+      .eq("id", existingJob.id)
+      .eq("user_id", record.user_id)
+      .select("id")
+      .single();
+
+    if (error || !data?.id) {
+      console.error("[agent/adzuna] Job refresh error:", error);
+      return null;
+    }
+
+    return String(data.id);
+  }
+
+  const { data, error } = await insforge.database
+    .from("jobs")
+    .insert([record])
+    .select("id")
+    .single();
+
+  if (error || !data?.id) {
+    console.error("[agent/adzuna] Job insert error:", error);
+    return null;
+  }
+
+  return String(data.id);
 }
 
 export async function discoverJobsFromAdzuna({
@@ -180,8 +322,6 @@ export async function discoverJobsFromAdzuna({
     let jobsSaved = 0;
     let strongMatches = 0;
     let lastSaveFailed = false;
-    const insforge = await createInsforgeServer();
-
     for (const job of discoveredJobs) {
       const matchResult = await matchJobToProfile(job, profile, { userId, runId });
 
@@ -199,15 +339,10 @@ export async function discoverJobsFromAdzuna({
         matchResult.match.missingSkills,
       );
 
-      const { data, error } = await insforge.database
-        .from("jobs")
-        .insert([record])
-        .select("id")
-        .single();
+      const savedJobId = await saveOrRefreshJob(record);
 
-      if (error || !data?.id) {
+      if (!savedJobId) {
         lastSaveFailed = true;
-        console.error("[agent/adzuna] Job insert error:", error);
         await logAgentMessage(
           userId,
           runId,
@@ -228,7 +363,7 @@ export async function discoverJobsFromAdzuna({
         runId,
         "success",
         `Saved ${job.company} — ${job.title} with a ${record.match_score}% match.`,
-        data.id,
+        savedJobId,
       );
 
       await capturePostHogServerEvent(userId, "job_found", {

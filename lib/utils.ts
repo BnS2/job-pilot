@@ -1,5 +1,46 @@
 export const MATCH_THRESHOLD = 70;
 
+export const JOB_STATUSES = [
+  "active",
+  "applied",
+  "unavailable",
+  "archived",
+  "rejected",
+  "completed",
+] as const;
+
+export type JobStatus = (typeof JOB_STATUSES)[number];
+
+export function isJobStatus(value: string): value is JobStatus {
+  return JOB_STATUSES.includes(value as JobStatus);
+}
+
+export function getJobStatusLabel(status: JobStatus): string {
+  const labels: Record<JobStatus, string> = {
+    active: "Active",
+    applied: "Applied",
+    unavailable: "Unavailable",
+    archived: "Archived",
+    rejected: "Rejected",
+    completed: "Completed",
+  };
+
+  return labels[status];
+}
+
+export function getJobStatusBadgeClass(status: JobStatus): string {
+  const classes: Record<JobStatus, string> = {
+    active: "bg-success-lightest text-success-foreground",
+    applied: "bg-info-lightest text-info-foreground",
+    unavailable: "bg-surface-secondary text-text-secondary",
+    archived: "bg-surface-secondary text-text-secondary",
+    rejected: "bg-accent-muted text-accent",
+    completed: "bg-success-light text-success-dark",
+  };
+
+  return classes[status];
+}
+
 export type EducationData = {
   degree?: string;
   fieldOfStudy?: string;
