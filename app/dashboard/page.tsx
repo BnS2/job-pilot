@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AuthSessionGuard } from "@/components/auth/AuthSessionGuard";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { Footer } from "@/components/layout/Footer";
 import { Navbar } from "@/components/layout/Navbar";
@@ -12,7 +13,7 @@ export default async function DashboardPage() {
   const { data } = await insforge.auth.getCurrentUser();
 
   if (!data.user) {
-    redirect("/login");
+    redirect("/login?next=%2Fdashboard");
   }
 
   await capturePostHogServerEvent(data.user.id, "dashboard_checkpoint_viewed", {
@@ -22,7 +23,8 @@ export default async function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
+      <AuthSessionGuard />
+      <Navbar activePath="/dashboard" showCta={false} />
       <main className="mx-auto flex max-w-[1110px] flex-col gap-6 px-4 py-12 sm:px-6">
         <section className="rounded-xl border border-border bg-surface p-6 shadow-sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

@@ -6,9 +6,9 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ## Current Status
 
-**Phase:** Phase 2 — Profile Page
-**Last completed:** 08 Resume PDF Generation from Profile
-**Next:** 09 Find Jobs Page — Full UI
+**Phase:** Phase 3 — Find Jobs Page
+**Last completed:** 11 Filter + Sort + Pagination
+**Next:** 12 Job Lifecycle + Stale Listing Handling
 
 ---
 
@@ -31,21 +31,22 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ### Phase 3 — Find Jobs Page
 
-- [ ] 09 Find Jobs Page — Full UI
-- [ ] 10 Adzuna Job Discovery
-- [ ] 11 Filter + Sort + Pagination
+- [x] 09 Find Jobs Page — Full UI
+- [x] 10 Adzuna Job Discovery
+- [x] 11 Filter + Sort + Pagination
+- [ ] 12 Job Lifecycle + Stale Listing Handling
 
 ### Phase 4 — Job Details Page
 
-- [ ] 12 Job Details Page — Full UI
-- [ ] 13 Company Research Agent
+- [ ] 13 Job Details Page — Full UI
+- [ ] 14 Company Research Agent
 
 ### Phase 5 — Dashboard
 
-- [ ] 14 Dashboard Page — Full UI
-- [ ] 15 Stats Bar — Real Data
-- [ ] 16 Recent Activity — Real Data
-- [ ] 17 Analytics Charts — PostHog Data
+- [ ] 15 Dashboard Page — Full UI
+- [ ] 16 Stats Bar — Real Data
+- [ ] 17 Recent Activity — Real Data
+- [ ] 18 Analytics Charts — PostHog Data
 
 ---
 
@@ -59,6 +60,7 @@ Update this file after every completed feature. Any AI agent reading this should
 - 2026-06-10 — Installed PostHog MCP for Codex with `npx @posthog/wizard mcp add`. MCP is for agent-side analytics workflows and does not affect app runtime.
 - 2026-06-10 — Completed PostHog initialization alignment. The wizard-added foundation events are now explicitly allowed in `code-standards.md`, and server-side PostHog captures use a short-lived client with `await shutdown()` before route return.
 - 2026-06-10 — Feature 04 schema decisions: ON DELETE CASCADE from auth.users → profiles → all child tables. Auto-create trigger on auth.users INSERT pre-fills profiles row with email and is_complete=false. RLS uses auth.uid() policies on all four tables. user_id indexes added to jobs, agent_runs, agent_logs for filtered query performance. resume_pdf_key added to profiles alongside resume_pdf_url (InsForge storage requires both url and key). InsForge MCP installed for Antigravity agent via @insforge/install + @insforge/cli link.
+- 2026-06-12 — Added job lifecycle and stale-listing handling to project scope before Job Details/Dashboard work. Saved jobs remain persistent history, but default user-facing lists should focus on active opportunities. Stale/closed listings are soft-marked `unavailable`, user outcomes use statuses like `applied`, `archived`, `rejected`, and `completed`, and new searches should upsert matching external listings instead of creating cross-run duplicates.
 
 ---
 
@@ -85,3 +87,16 @@ Update this file after every completed feature. Any AI agent reading this should
 - 2026-06-12 — Feature 08 complete. Added `@react-pdf/renderer`, `agent/resumeGenerator.ts`, `app/api/resume/generate/ResumeDocument.tsx`, and `app/api/resume/generate/route.ts`. The profile page now has one-click resume generation from saved profile data. `/api/resume/generate` authenticates the user, validates resume-essential profile fields, generates polished structured resume content with Gemini 3.5 Flash, renders an A4 PDF with `renderToBuffer`, uploads it to the private `resumes` bucket, saves the returned `resume_pdf_url` and `resume_pdf_key`, and returns updated metadata to the client. Generation uses the single-active-resume rule and removes the previous active storage object only after the new generated resume is active.
 - 2026-06-12 — Feature 08 reliability fix complete. Resume generation now retries transient Gemini availability/rate/high-demand failures on `GEMINI_TEXT_MODEL` and falls back to `GEMINI_FAST_MODEL` before returning a temporary-service 503. This matches the proven Feature 07 extraction reliability pattern.
 - 2026-06-12 — Review follow-up complete. Verified the pasted review findings against current code and fixed the still-valid profile/resume issues: resume metadata now requires a user-owned storage key and matching storage URL before persistence, failed metadata writes clean up the uploaded object, storage deletion failures no longer clear profile references, extraction runs start before storage download and mark early failures failed, profile completion indicators use dynamically calculated values, Gemini retry helpers are shared, MarkItDown failures are logged selectively, accessibility attributes were added to nav/progress UI, and docs/migration/requirements drift was corrected.
+- 2026-06-12 — Feature 09 complete. Built the protected `/find-jobs` mock UI from `context/designs/find-jobs.png`: search controls card, success banner, filter toolbar, jobs table, source badges, match score bars, and pagination. Kept the `SOURCE` column from the build plan and schema because `jobs.source` is already constrained to `search | url`; badge styling stays token-based per `ui-tokens.md` / `ui-rules.md`. No Adzuna, DB jobs query, real filtering, sorting, or pagination logic is wired yet.
+- 2026-06-12 — Feature 10 complete. Added server-side Adzuna IT job discovery with `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` in `.env.schema`, `lib/adzuna.ts` for Adzuna search/country detection/normalization, `agent/matcher.ts` for Gemini structured match scoring, `agent/adzuna.ts` for discovery orchestration, and `app/api/agent/find/route.ts` for the authenticated API boundary. Search location now falls back to `profiles.location`, all successfully scored jobs are saved with `source='search'`, within-run Adzuna duplicates are skipped, and PostHog captures `job_search_started` / `job_found`. The Find Jobs table remains presentational until Feature 11 wires real DB reads, filtering, sorting, and pagination.
+- 2026-06-12 — Feature 10 search review fixes complete. Zero-result Adzuna searches now return a normal empty response with an info banner instead of HTTP 404. Profile-location fallback is now conservative: unsupported locations are not sent as `where` to the default US Adzuna endpoint, while explicit search locations are still respected.
+- 2026-06-12 — Feature 10 Gemini matching reliability fix complete. Empty, truncated, or schema-invalid Gemini match JSON now retries and falls back from `GEMINI_TEXT_MODEL` to `GEMINI_FAST_MODEL` before skipping a job. Match-output failures are logged separately from provider availability failures, and the job matching output budget is now 700 tokens.
+- 2026-06-12 — Feature 10 auth-expiry fix complete. Protected route refresh failures now clear stale InsForge auth cookies before redirecting to login, and the Find Jobs search form handles API 401 responses by clearing browser/cookie auth state and routing to `/login?next=/find-jobs`.
+- 2026-06-12 — Auth-expiry follow-up complete. Protected routes no longer accept access-token-only cookies, `/api/auth/refresh` clears auth cookies through `NextResponse` on refresh failure, protected app pages mount an invisible `AuthSessionGuard` that redirects to login on browser refresh 401, and navbar app links disable prefetch to avoid background protected-page renders from public auth pages.
+- 2026-06-12 — Feature 11 complete. Wired `/find-jobs` filtering, sorting, search, and pagination to the real database. Added custom interactive dropdown filters and debounced query syncing via URL parameters.
+- 2026-06-12 — Feature 11 UX fix complete. Successful Find Jobs searches now route to `/find-jobs?run={runId}` so the visible list is scoped to the latest search run instead of compounding every saved job for the user. The search controls also show staged live status copy during the synchronous Adzuna/Gemini scoring request so long searches do not appear stuck.
+- 2026-06-12 — Auth refresh optimization complete. `AuthSessionGuard` no longer calls `/api/auth/refresh` immediately on protected-page mount because `proxy.ts` and the InsForge browser SDK already handle initial refresh. It now remains as a periodic 5-minute stale-session guard, reducing duplicate healthy-session refresh logs.
+- 2026-06-12 — Dashboard navbar polish complete. Removed the unauthenticated "Start for free" CTA from the protected dashboard navbar and marked Dashboard as the active nav item.
+- 2026-06-12 — Feature 11 review fixes complete. Hardened `/find-jobs` query params before PostgREST filtering, clamped/redirected invalid pagination, slowed text filter debounce to 700ms, switched filter/pagination URL changes to `router.replace(..., { scroll: false })`, removed fixed-position dropdown backdrops and raw ring color usage, added null-safe jobs table rendering, and changed the navbar logo to eager loading for the LCP warning.
+- 2026-06-12 — Homepage auth redirect restored. `/` now checks the InsForge server session and redirects signed-in users to `/dashboard`, so navbar/footer logo links to `/` satisfy the product rule instead of showing the public homepage to authenticated users.
+- 2026-06-12 — Review follow-up complete. Verified current inline findings and fixed the still-valid issues: best-effort search analytics, refresh exception 5xx handling, preserved `/find-jobs` login `next` query, deterministic paginated ordering, explicit DB error UI, safer source/date rendering, logout failure propagation, Adzuna request timeout, proxy exception handling, and docs drift for lifecycle and storage upload replacement patterns.

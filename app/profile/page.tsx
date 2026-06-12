@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { AuthSessionGuard } from "@/components/auth/AuthSessionGuard";
 import { Navbar } from "@/components/layout/Navbar";
 import { CompletionIndicator } from "@/components/profile/CompletionIndicator";
 import { ProfileClient } from "@/components/profile/ProfileClient";
@@ -11,7 +12,7 @@ export default async function ProfilePage() {
   const { data } = await insforge.auth.getCurrentUser();
 
   if (!data.user) {
-    redirect("/login");
+    redirect("/login?next=%2Fprofile");
   }
 
   const { data: dbProfile, error: dbError } = await insforge.database
@@ -57,6 +58,7 @@ export default async function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <AuthSessionGuard />
       <Navbar activePath="/profile" fullWidth showCta={false} />
       <main className="mx-auto flex max-w-[920px] flex-col gap-8 px-4 py-8 sm:px-6">
         <CompletionIndicator

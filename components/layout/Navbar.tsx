@@ -87,7 +87,7 @@ export function Navbar({
         }
       >
         <Link href="/" aria-label="JobPilot home">
-          <Image src="/logo.png" alt="JobPilot" width={118} height={40} priority />
+          <Image src="/logo.png" alt="JobPilot" width={118} height={40} loading="eager" />
         </Link>
 
         <nav className="hidden items-center gap-8 text-sm font-medium text-text-dark sm:flex">
@@ -98,6 +98,7 @@ export function Navbar({
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={false}
                 aria-current={isActive ? "page" : undefined}
                 className={
                   isActive

@@ -36,7 +36,7 @@ Last updated: 2026-06-12
 | Accent usage     | `bg-overlay text-accent-foreground` for CTA, `text-accent` for active link |
 
 **Pattern notes:**
-The top nav can render with either a centered `max-w-[1110px]` inner row or a full-width app layout. Logo uses the public `logo.png` asset. Current implementation supports hiding the CTA for authenticated app pages. Nav links use small token-colored line icons and the active state is color-only, matching `ui-rules.md`. Active nav links expose `aria-current="page"` for assistive technology.
+The top nav can render with either a centered `max-w-[1110px]` inner row or a full-width app layout. Logo uses the public `logo.png` asset and loads eagerly because it can be the above-the-fold LCP image. Current implementation supports hiding the CTA for authenticated app pages. Nav links use small token-colored line icons and the active state is color-only, matching `ui-rules.md`. Active nav links expose `aria-current="page"` for assistive technology. Protected app nav links disable Next.js prefetch so login/public pages do not background-render protected routes while auth state is uncertain.
 
 ### Footer
 
@@ -258,6 +258,26 @@ Last updated: 2026-06-10
 **Pattern notes:**
 Logout is a bordered secondary action that clears local InsForge browser state and app-domain SSR cookies before replacing the route with `/login`.
 
+### Auth Session Guard
+
+File: `components/auth/AuthSessionGuard.tsx`
+Last updated: 2026-06-12
+
+| Property         | Class |
+| ---------------- | ----- |
+| Background       | none  |
+| Border           | none  |
+| Border radius    | none  |
+| Text — primary   | none  |
+| Text — secondary | none  |
+| Spacing          | none  |
+| Hover state      | none  |
+| Shadow           | none  |
+| Accent usage     | none  |
+
+**Pattern notes:**
+Auth Session Guard is an invisible protected-page client guard. Immediate page-load auth refresh is owned by `proxy.ts` and the InsForge browser SDK; this guard only performs a periodic 5-minute refresh check, clears browser/cookie auth state on a 401 refresh response, and routes to `/login?next={currentPath}`. It must not render visual UI or introduce layout classes.
+
 ### Profile Completion Indicator
 
 File: `components/profile/CompletionIndicator.tsx`
@@ -361,7 +381,7 @@ The profile page shell is a protected server-rendered app page that composes Nav
 ### Dashboard Auth Checkpoint
 
 File: `app/dashboard/page.tsx`
-Last updated: 2026-06-10
+Last updated: 2026-06-12
 
 | Property         | Class                                                                                     |
 | ---------------- | ----------------------------------------------------------------------------------------- |
@@ -377,4 +397,104 @@ Last updated: 2026-06-10
 
 **Pattern notes:**
 This is a temporary protected checkpoint for testing the auth redirect and logout flow before the full Phase 5 dashboard UI. It uses sibling section cards only and avoids dashboard analytics patterns that belong to the later feature.
-The page now also sends the `dashboard_checkpoint_viewed` PostHog event server-side after confirming the authenticated user; this does not change the visual pattern.
+The page now also sends the `dashboard_checkpoint_viewed` PostHog event server-side after confirming the authenticated user; this does not change the visual pattern. Dashboard uses the authenticated-app navbar treatment with active `/dashboard` state and no "Start for free" CTA.
+
+### Find Jobs Page Shell
+
+File: `app/find-jobs/page.tsx`
+Last updated: 2026-06-12
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-background`                                                       |
+| Border           | none on page shell                                                    |
+| Border radius    | none on page shell                                                    |
+| Text — primary   | inherited from child components                                       |
+| Text — secondary | inherited from child components                                       |
+| Spacing          | `min-h-screen`, `max-w-[1440px]`, `gap-6`, `px-4 py-8 sm:px-6 lg:px-12` |
+| Hover state      | none                                                                  |
+| Shadow           | none                                                                  |
+| Accent usage     | delegated to child components                                         |
+
+**Pattern notes:**
+The Find Jobs page is a protected Server Component that verifies the current InsForge user and composes the app navbar, search controls, filter toolbar, and jobs table. Feature 09 uses static mock rows only; real search, filtering, sorting, pagination, and jobs DB reads are deferred to Features 10 and 11. The real list can be scoped by a `run` URL parameter so a completed search shows only that search run's saved jobs instead of compounding every saved job into the current view. Query-string inputs are normalized before hitting the InsForge/PostgREST query builder, stable secondary ordering is applied before pagination, and out-of-range page numbers redirect back to the nearest valid page. Database failures render a token-styled error card instead of the empty jobs table.
+
+### Find Jobs Search Controls
+
+File: `components/find-jobs/SearchControls.tsx`
+Last updated: 2026-06-12
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-surface`, `bg-success-lightest` success banner, `bg-info-lightest` empty-result banner, `bg-error/10` error banner |
+| Border           | `border border-border`, `border border-success/20` success banner, `border border-info/20` empty-result banner, `border border-error/20` error banner |
+| Border radius    | `rounded-xl` for card, `rounded-md` for inputs/button/banner          |
+| Text — primary   | `text-text-primary`, `text-text-dark`, `text-success-foreground`, `text-info-foreground`, `text-error` |
+| Text — secondary | `text-text-muted`, `placeholder:text-text-muted`                      |
+| Spacing          | `p-6`, `grid gap-4 lg:grid-cols-[1fr_1fr_auto]`, inputs `h-12 px-4`, button `h-12 px-6`, banner `mt-5 px-4 py-4 gap-3` |
+| Hover state      | `hover:bg-accent-dark` for primary CTA                                |
+| Shadow           | `shadow-sm`                                                           |
+| Accent usage     | `bg-accent text-accent-foreground`, `text-success` success icon, `text-info` empty icon, `text-error` error icon |
+
+**Pattern notes:**
+Search controls match the supplied `find-jobs.png` card: uppercase compact labels, large rounded inputs, search icon in the job title input, and conditional status banners below the controls. Feature 10 converts this to a Client Component with controlled inputs, submit loading state, `POST /api/agent/find` wiring, a token-green success banner from the API response, a token-blue empty-result banner for zero Adzuna results, and a token-red human-readable error banner. While the synchronous Adzuna/Gemini request is pending, a token-blue live status banner cycles through search/scoring/saving messages so long AI runs do not look frozen. A successful search routes to `/find-jobs?run={runId}` and clears local list filters so the table is scoped to the latest run. A 401 search response clears stale InsForge browser/cookie auth state and routes to `/login?next=/find-jobs`.
+
+### Find Jobs Filter Toolbar
+
+File: `components/find-jobs/JobFilters.tsx`
+Last updated: 2026-06-12
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-surface`, `bg-accent-muted` for active dropdown options           |
+| Border           | `border border-border`, divider `bg-border`                           |
+| Border radius    | `rounded-xl` toolbar, `rounded-md` dropdown buttons/options           |
+| Text — primary   | `text-text-primary`, `text-accent` for active dropdown options         |
+| Text — secondary | `text-text-muted`, `text-text-secondary`, `placeholder:text-text-muted` |
+| Spacing          | `p-4`, `gap-4`, `h-10`, dropdowns `min-w-36 min-w-40 px-4`            |
+| Hover state      | `hover:border-text-secondary` for dropdown button, `hover:bg-surface-secondary hover:text-text-dark` for option hover |
+| Shadow           | `shadow-sm`, absolute dropdown `shadow-lg`                            |
+| Accent usage     | `text-accent bg-accent-muted` for active dropdown option              |
+
+**Pattern notes:**
+The toolbar handles filtering the retrieved jobs list through URL parameters backed by the server DB query. Converted to Client Component. It features a text filter input synced to local state and debounced by 700ms (also handling immediate Enter submit) to replace the `q` query parameter without adding typing steps to browser history. Custom openable dropdown menus use React state plus document-level outside-click handling to select Match Filters (All, High, Low) and Sort Orders (Score, Newest, Oldest), updating query parameters and resetting pagination without fixed-position backdrops or raw color classes.
+
+### Find Jobs Table
+
+File: `components/find-jobs/JobsTable.tsx`
+Last updated: 2026-06-12
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-surface`, `bg-surface-secondary` for header/icon wells            |
+| Border           | `border border-border`, row `border-b border-border`                  |
+| Border radius    | `rounded-xl` table shell, `rounded-md` icon wells, `rounded-full` badges/bars |
+| Text — primary   | `text-text-primary`, `text-text-dark`                                 |
+| Text — secondary | `text-text-secondary`                                                 |
+| Spacing          | `overflow-hidden`, table `min-w-[1180px]`, header `px-6/8 py-5`, rows `px-6/8 py-6`, icon wells `h-10 w-10`, score bar `h-1.5 w-32` |
+| Hover state      | `hover:bg-surface-secondary` row hover, `hover:text-accent` for links |
+| Shadow           | `shadow-sm`                                                           |
+| Accent usage     | match fills `bg-success` (>=85), `bg-info-medium` (>=70), `bg-warning` (<70); source badges `bg-info-lightest text-info-foreground` and `bg-surface-secondary text-text-secondary` |
+
+**Pattern notes:**
+Renders real jobs queried from the database. Column parameters map `job.company` and `job.title` (as role), with user-safe fallback labels for nullable or drifted rows. Match score progress bar width is set dynamically via inline style after clamping the score to 0-100 and color-coded based on tone thresholds. Salary falls back to "Not specified". Source maps to Search or URL badge. Date Found uses a client/server-safe relative date formatter. Supports full empty state row when search/filtering yields zero records.
+
+### Find Jobs Pagination
+
+File: `components/find-jobs/JobsPagination.tsx`
+Last updated: 2026-06-12
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-surface`, `bg-accent-muted` active page                           |
+| Border           | `border-t border-border`, button `border border-border`, active `border border-accent/20` |
+| Border radius    | `rounded-md`                                                          |
+| Text — primary   | `text-text-primary`, `text-accent` active page                        |
+| Text — secondary | `text-text-secondary`, `text-text-muted` disabled/ellipsis            |
+| Spacing          | `px-6 py-5`, `gap-4`, nav `gap-2`, buttons `h-10 w-10` or `h-10 px-4` |
+| Hover state      | `hover:border-text-secondary` button hover                            |
+| Shadow           | `shadow-sm` buttons                                                   |
+| Accent usage     | `bg-accent-muted text-accent` active page                             |
+
+**Pattern notes:**
+Pagination is driven dynamically by `page`, `pageSize`, and `totalCount` props. It calculates total pages, dynamically generates page numbers list with ellipses (e.g. `[1, 2, '...', 7, 8]`), disables Previous/Next controls at boundaries, and routes user navigation by replacing the `page` URL search parameter without scrolling the list back to the top. Displays accurate clamped "Showing X to Y of Z results" text. Hidden if total results fit on a single page.

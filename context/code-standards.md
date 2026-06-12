@@ -224,14 +224,16 @@ All PostHog events must use these exact event names. Never invent new event name
 
 ### Product Events
 
-These four events power the JobPilot product analytics and dashboard charts.
+These events power the JobPilot product analytics and dashboard charts.
 
-| Event                | When                                       | Key Properties             |
-| -------------------- | ------------------------------------------ | -------------------------- |
-| `job_search_started` | Find Jobs button clicked                   | userId, jobTitle, location |
-| `job_found`          | Each job discovered and saved              | userId, source, matchScore |
-| `profile_completed`  | User saves complete profile for first time | userId                     |
-| `company_researched` | Company research dossier generated         | userId, jobId, company     |
+| Event                      | When                                       | Key Properties                            |
+| -------------------------- | ------------------------------------------ | ----------------------------------------- |
+| `job_search_started`       | Find Jobs button clicked                   | userId, jobTitle, location                |
+| `job_found`                | Each job discovered and saved              | userId, source, matchScore                |
+| `job_status_changed`       | User or agent changes a job lifecycle status | userId, jobId, fromStatus, toStatus, reason |
+| `job_unavailable_detected` | Availability check confirms a listing is closed, expired, removed, or unreachable | userId, jobId, source, reason |
+| `profile_completed`        | User saves complete profile for first time | userId                                    |
+| `company_researched`       | Company research dossier generated         | userId, jobId, company                    |
 
 ### Foundation Events
 
@@ -259,6 +261,8 @@ These events cover temporary or existing application surfaces before the full pr
 Do not add more events without updating this list first.
 
 `job_found` powers the Jobs Found Over Time and Match Score Distribution dashboard charts.
+`job_status_changed` powers lifecycle activity and applied/completed pipeline history.
+`job_unavailable_detected` powers stale-listing health and cleanup visibility.
 `company_researched` powers the Company Research Activity dashboard chart.
 Always fire these with correct properties.
 
@@ -286,6 +290,9 @@ Current active environment variables:
 | `NEXT_PUBLIC_INSFORGE_ANON_KEY` | `lib/insforge-client.ts`, `lib/insforge-server.ts`, `proxy.ts`          |
 | `NEXT_PUBLIC_POSTHOG_KEY`      | `instrumentation-client.ts`, `lib/posthog-server.ts`                    |
 | `NEXT_PUBLIC_POSTHOG_HOST`     | `lib/posthog-server.ts`, `next.config.ts` PostHog reverse-proxy destinations |
+| `GEMINI_API_KEY`               | `lib/gemini.ts`                                                         |
+| `ADZUNA_APP_ID`                | `lib/adzuna.ts`                                                         |
+| `ADZUNA_APP_KEY`               | `lib/adzuna.ts`                                                         |
 
 `NEXT_PUBLIC_` prefix means the variable is exposed to the browser. Never add `NEXT_PUBLIC_` to secret keys.
 
