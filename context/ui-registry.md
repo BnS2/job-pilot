@@ -417,7 +417,7 @@ Last updated: 2026-06-12
 | Accent usage     | delegated to child components                                         |
 
 **Pattern notes:**
-The Find Jobs page is a protected Server Component that verifies the current InsForge user and composes the app navbar, search controls, filter toolbar, and jobs table. Feature 09 uses static mock rows only; real search, filtering, sorting, pagination, and jobs DB reads are deferred to Features 10 and 11. The real list can be scoped by a `run` URL parameter so a completed search shows only that search run's saved jobs instead of compounding every saved job into the current view. Query-string inputs are normalized before hitting the InsForge/PostgREST query builder, and out-of-range page numbers redirect back to the nearest valid page.
+The Find Jobs page is a protected Server Component that verifies the current InsForge user and composes the app navbar, search controls, filter toolbar, and jobs table. Feature 09 uses static mock rows only; real search, filtering, sorting, pagination, and jobs DB reads are deferred to Features 10 and 11. The real list can be scoped by a `run` URL parameter so a completed search shows only that search run's saved jobs instead of compounding every saved job into the current view. Query-string inputs are normalized before hitting the InsForge/PostgREST query builder, stable secondary ordering is applied before pagination, and out-of-range page numbers redirect back to the nearest valid page. Database failures render a token-styled error card instead of the empty jobs table.
 
 ### Find Jobs Search Controls
 

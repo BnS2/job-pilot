@@ -84,6 +84,23 @@ function getPageRedirectPath(
   return queryString ? `/find-jobs?${queryString}` : "/find-jobs";
 }
 
+function getCurrentFindJobsPath(
+  params: Awaited<FindJobsPageProps["searchParams"]>,
+): string {
+  const currentParams = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    const paramValue = firstParam(value);
+
+    if (paramValue) {
+      currentParams.set(key, paramValue);
+    }
+  }
+
+  const queryString = currentParams.toString();
+  return queryString ? `/find-jobs?${queryString}` : "/find-jobs";
+}
+
 export default async function FindJobsPage({ searchParams }: FindJobsPageProps) {
   const parsedParams = await searchParams;
   const rawQ = firstParam(parsedParams.q) || "";
@@ -98,7 +115,7 @@ export default async function FindJobsPage({ searchParams }: FindJobsPageProps) 
   const { data: authData } = await insforge.auth.getCurrentUser();
 
   if (!authData.user) {
-    redirect("/login?next=%2Ffind-jobs");
+    redirect(`/login?next=${encodeURIComponent(getCurrentFindJobsPath(parsedParams))}`);
   }
 
   let dbQuery = insforge.database
@@ -121,11 +138,17 @@ export default async function FindJobsPage({ searchParams }: FindJobsPageProps) 
   }
 
   if (sort === "match") {
-    dbQuery = dbQuery.order("match_score", { ascending: false });
+    dbQuery = dbQuery
+      .order("match_score", { ascending: false })
+      .order("id", { ascending: true });
   } else if (sort === "newest") {
-    dbQuery = dbQuery.order("found_at", { ascending: false });
+    dbQuery = dbQuery
+      .order("found_at", { ascending: false })
+      .order("id", { ascending: true });
   } else if (sort === "oldest") {
-    dbQuery = dbQuery.order("found_at", { ascending: true });
+    dbQuery = dbQuery
+      .order("found_at", { ascending: true })
+      .order("id", { ascending: true });
   }
 
   const from = (page - 1) * pageSize;
@@ -136,12 +159,31 @@ export default async function FindJobsPage({ searchParams }: FindJobsPageProps) 
 
   if (error) {
     console.error("[FindJobsPage] Database query error:", error);
+
+    return (
+      <div className="min-h-screen bg-background">
+        <AuthSessionGuard />
+        <Navbar activePath="/find-jobs" fullWidth showCta={false} />
+        <main className="mx-auto flex max-w-[1440px] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-12">
+          <SearchControls />
+          <JobFilters key={q} q={q} match={match} sort={sort} />
+          <section className="rounded-xl border border-border bg-surface p-6 shadow-sm">
+            <h2 className="text-base font-semibold leading-6 text-text-primary">
+              Jobs could not be loaded
+            </h2>
+            <p className="mt-2 text-sm font-medium leading-5 text-text-secondary">
+              Refresh the page or try again in a moment.
+            </p>
+          </section>
+        </main>
+      </div>
+    );
   }
 
-  const totalCount = count || 0;
+  const totalCount = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
-  if (!error && page > totalPages) {
+  if (page > totalPages) {
     redirect(getPageRedirectPath(parsedParams, totalPages));
   }
 
@@ -153,7 +195,7 @@ export default async function FindJobsPage({ searchParams }: FindJobsPageProps) 
         <SearchControls />
         <JobFilters key={q} q={q} match={match} sort={sort} />
         <JobsTable
-          jobs={jobs || []}
+          jobs={jobs ?? []}
           page={page}
           pageSize={pageSize}
           totalCount={totalCount}

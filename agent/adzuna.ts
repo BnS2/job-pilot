@@ -255,7 +255,7 @@ export async function discoverJobsFromAdzuna({
       };
     }
 
-    const message = `Found ${discoveredJobs.length} jobs and saved ${strongMatches} strong matches.`;
+    const message = `Found ${discoveredJobs.length} jobs, saved ${jobsSaved} jobs (${strongMatches} strong matches).`;
     await logAgentMessage(userId, runId, "success", message);
 
     return {

@@ -173,9 +173,24 @@ export async function searchAdzunaJobs(
     params.set("where", location.trim());
   }
 
-  const response = await fetch(
-    `https://api.adzuna.com/v1/api/jobs/${country}/search/1?${params.toString()}`,
-  );
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  let response: Response;
+
+  try {
+    response = await fetch(
+      `https://api.adzuna.com/v1/api/jobs/${country}/search/1?${params.toString()}`,
+      { signal: controller.signal },
+    );
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Adzuna API request timed out.");
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     throw new Error(`Adzuna API error: ${response.status}`);

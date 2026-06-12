@@ -45,10 +45,18 @@ function getMatchFillClass(score: number): string {
 }
 
 function getSourceLabel(source: "search" | "url" | null): string {
+  if (source === null) {
+    return "Imported";
+  }
+
   return source === "search" ? "Search" : "URL";
 }
 
 function getSourceClass(source: "search" | "url" | null): string {
+  if (source === null) {
+    return "bg-surface-secondary text-text-muted";
+  }
+
   return source === "search"
     ? "bg-info-lightest text-info-foreground"
     : "bg-surface-secondary text-text-secondary";
@@ -69,6 +77,10 @@ function formatRelativeTime(dateString: string | null): string {
 
   try {
     const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) {
+      return "Unknown";
+    }
+
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     if (diffMs < 0) return "Just now";

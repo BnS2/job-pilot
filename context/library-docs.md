@@ -192,7 +192,7 @@ const resumePdfKey = data.key;
 **Rules:**
 
 - The current TypeScript SDK upload signature is `.upload(path, file)` and does not accept an upsert option
-- When replacing the active resume from server code, upload the replacement first, save the returned metadata, then remove the previous `resume_pdf_key` only after the new resume is active
+- When replacing the active resume from server code, upload the replacement first, save the returned metadata, then remove the previous `resume_pdf_key` only after the new resume is active. This is the supported replacement pattern; do not pass an `upsert` option to `.upload(path, file)`.
 - Always save both the returned `url` and `key` back to the DB after upload because storage may auto-rename if a key conflict remains
 - The `resumes` bucket is private; open resumes through `/api/profile/resume`, which verifies the current user and downloads by `resume_pdf_key`
 - Never write files to disk — always upload buffer directly to storage
@@ -274,9 +274,14 @@ const jobRecord = {
   title: job.title,
   company: job.company.display_name,
   location: job.location.display_name,
-  salary: job.salary_min
-    ? `$${Math.round(job.salary_min / 1000)}k - $${Math.round(job.salary_max! / 1000)}k`
-    : null,
+  salary:
+    job.salary_min && job.salary_max
+      ? `$${Math.round(job.salary_min / 1000)}k - $${Math.round(job.salary_max / 1000)}k`
+      : job.salary_min
+        ? `$${Math.round(job.salary_min / 1000)}k+`
+        : job.salary_max
+          ? `Up to $${Math.round(job.salary_max / 1000)}k`
+          : null,
   job_type: job.contract_type || "fulltime",
   about_role: job.description, // Adzuna returns snippet — used as description
   match_score: scoredJob.matchScore,
@@ -657,13 +662,10 @@ const ResumePDF = ({ profile }: { profile: Profile }) => (
 // Generate buffer
 const buffer = await renderToBuffer(<ResumePDF profile={profile} />)
 
-// Upload directly to InsForge Storage
+// Upload directly to InsForge Storage. Do not pass an upsert option.
 await insforge.storage
   .from('resumes')
-  .upload(`${userId}/resume.pdf`, buffer, {
-    contentType: 'application/pdf',
-    upsert: true
-  })
+  .upload(`${userId}/resume.pdf`, buffer)
 ```
 
 **Supported CSS properties:**

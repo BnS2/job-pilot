@@ -19,12 +19,19 @@ export async function proxy(request: NextRequest) {
   }
 
   const response = NextResponse.next({ request });
-  const result = await updateSession({
-    baseUrl: requirePublicEnv("NEXT_PUBLIC_INSFORGE_URL"),
-    anonKey: requirePublicEnv("NEXT_PUBLIC_INSFORGE_ANON_KEY"),
-    requestCookies: createRequestCookieStore(request),
-    responseCookies: createResponseCookieStore(response),
-  });
+  let result: Awaited<ReturnType<typeof updateSession>>;
+
+  try {
+    result = await updateSession({
+      baseUrl: requirePublicEnv("NEXT_PUBLIC_INSFORGE_URL"),
+      anonKey: requirePublicEnv("NEXT_PUBLIC_INSFORGE_ANON_KEY"),
+      requestCookies: createRequestCookieStore(request),
+      responseCookies: createResponseCookieStore(response),
+    });
+  } catch (error) {
+    console.error("[proxy] Session update error:", error);
+    return redirectToLogin(request, true);
+  }
 
   if (result.error || !result.accessToken) {
     return redirectToLogin(request, true);

@@ -24,12 +24,10 @@ export async function POST(request: NextRequest) {
     return result.response;
   } catch (error) {
     console.error("[auth/refresh] Exception caught:", error);
-    const response = NextResponse.json(
-      { success: false, error: "Session expired" },
-      { status: 401 },
-    );
-    clearAuthCookies(response.cookies);
 
-    return response;
+    return NextResponse.json(
+      { success: false, error: "Failed to refresh session" },
+      { status: 500 },
+    );
   }
 }

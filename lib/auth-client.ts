@@ -14,9 +14,12 @@ export async function clearExpiredSession(): Promise<void> {
     console.error("[auth] Failed to clear browser auth state:", error);
   }
 
-  try {
-    await fetch("/api/auth/logout", { method: "POST" });
-  } catch (error) {
-    console.error("[auth] Failed to clear auth cookies:", error);
+  const response = await fetch("/api/auth/logout", { method: "POST" });
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(
+      `Logout request failed with status ${response.status}: ${responseText}`,
+    );
   }
 }

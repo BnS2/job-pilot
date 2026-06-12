@@ -130,7 +130,7 @@ Wire profile form to InsForge DB.
 **Logic:**
 
 - Server Action in actions/profile.ts saves all form fields to profiles table
-- Resume PDF uploaded to InsForge Storage at resumes/{user_id}/resume.pdf with upsert: true
+- Resume PDF uploaded to InsForge Storage using the upload-new-first flow: upload the new file, save the returned URL/key, then remove the previous active object only after metadata is persisted
 - resume_pdf_url saved to profiles table after upload
 - is_complete set to true when all required fields are filled
 - Completion percentage and missing fields calculated and saved
@@ -176,7 +176,7 @@ Generate a clean professional PDF resume from current profile data using Gemini 
   - Polished work experience bullet points
   - Clean professional language throughout
 - @react-pdf/renderer renders Gemini output into clean single-page PDF using renderToBuffer()
-- Buffer uploaded to InsForge Storage at resumes/{user_id}/resume.pdf with upsert: true
+- Buffer uploaded to InsForge Storage using the upload-new-first flow; save the returned URL/key before removing any previous active resume object
 - resume_pdf_url updated in profiles table
 
 ---

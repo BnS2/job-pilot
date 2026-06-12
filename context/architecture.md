@@ -313,8 +313,8 @@ URL saved to profiles table
 Job lifecycle rules:
 
 - `active` is the default status for newly discovered or refreshed listings.
-- Default Find Jobs and Dashboard opportunity metrics exclude `unavailable`, `archived`, `rejected`, and `completed` unless a view explicitly asks for them.
-- `applied` remains part of the user's pipeline history and may appear in applied/completed filters, but it should not be counted as a new active search result.
+- Default Find Jobs and Dashboard opportunity metrics exclude `unavailable`, `archived`, `applied`, `rejected`, and `completed` unless a view explicitly asks for them.
+- `applied` remains part of the user's pipeline history and may appear in applied/completed filters, but it is not counted as a new active search result or active opportunity.
 - Discovery uses `source_job_id` when available, falling back to normalized `source_url` / `external_apply_url`, to upsert existing listings for the same user instead of duplicating rows across search runs.
 - A refreshed existing listing should update `run_id`, `found_at`, `last_seen_at`, matching fields, and changed listing metadata while preserving user-owned lifecycle state unless the row was `unavailable` and the listing is now confirmed available again.
 - Normal cleanup is soft state transition, not hard delete.

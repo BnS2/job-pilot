@@ -89,11 +89,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await capturePostHogServerEvent(userId, "job_search_started", {
-      userId,
-      jobTitle: body.data.jobTitle,
-      location: body.data.location,
-    });
+    try {
+      await capturePostHogServerEvent(userId, "job_search_started", {
+        userId,
+        jobTitle: body.data.jobTitle,
+        location: body.data.location,
+      });
+    } catch (error) {
+      console.error("[api/agent/find] PostHog capture error:", error);
+    }
 
     const profileData: ProfileData = profile;
     const discovery = await discoverJobsFromAdzuna({
