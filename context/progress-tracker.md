@@ -6,9 +6,9 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ## Current Status
 
-**Phase:** Phase 3 — Find Jobs Page
-**Last completed:** 11 Filter + Sort + Pagination
-**Next:** 12 Job Lifecycle + Stale Listing Handling
+**Phase:** Phase 4 — Job Details Page
+**Last completed:** 13 Job Details Page — Full UI
+**Next:** 14 Company Research Agent
 
 ---
 
@@ -34,11 +34,11 @@ Update this file after every completed feature. Any AI agent reading this should
 - [x] 09 Find Jobs Page — Full UI
 - [x] 10 Adzuna Job Discovery
 - [x] 11 Filter + Sort + Pagination
-- [ ] 12 Job Lifecycle + Stale Listing Handling
+- [x] 12 Job Lifecycle + Stale Listing Handling
 
 ### Phase 4 — Job Details Page
 
-- [ ] 13 Job Details Page — Full UI
+- [x] 13 Job Details Page — Full UI
 - [ ] 14 Company Research Agent
 
 ### Phase 5 — Dashboard
@@ -100,3 +100,7 @@ Update this file after every completed feature. Any AI agent reading this should
 - 2026-06-12 — Feature 11 review fixes complete. Hardened `/find-jobs` query params before PostgREST filtering, clamped/redirected invalid pagination, slowed text filter debounce to 700ms, switched filter/pagination URL changes to `router.replace(..., { scroll: false })`, removed fixed-position dropdown backdrops and raw ring color usage, added null-safe jobs table rendering, and changed the navbar logo to eager loading for the LCP warning.
 - 2026-06-12 — Homepage auth redirect restored. `/` now checks the InsForge server session and redirects signed-in users to `/dashboard`, so navbar/footer logo links to `/` satisfy the product rule instead of showing the public homepage to authenticated users.
 - 2026-06-12 — Review follow-up complete. Verified current inline findings and fixed the still-valid issues: best-effort search analytics, refresh exception 5xx handling, preserved `/find-jobs` login `next` query, deterministic paginated ordering, explicit DB error UI, safer source/date rendering, logout failure propagation, Adzuna request timeout, proxy exception handling, and docs drift for lifecycle and storage upload replacement patterns.
+- 2026-06-12 — Feature 12 complete. Added `migrations/006_job_lifecycle.sql` and applied it to InsForge: jobs now have lifecycle status fields, provider IDs, last-seen/availability timestamps, status indexes, and an active-provider uniqueness guard. Adzuna discovery now refreshes existing user jobs by `source_job_id` first and source/apply URL second, updates metadata and `last_seen_at`, preserves user-owned statuses, and restores previously unavailable listings to active when rediscovered. `/find-jobs` now defaults to active jobs, includes a status filter and status badges, and renders status-aware empty states. Added user-triggered lifecycle server actions for applied, archived, rejected, completed, and active restore states with `job_status_changed` PostHog capture.
+- 2026-06-12 — Feature 13 complete. Added the protected `/find-jobs/[id]` detail page following `context/designs/job-details.png`, including match reasoning, skills, description, research empty state, apply link, compact status badge, and lifecycle action controls. The Research Company button remains presentational until Feature 14 wires the company research agent.
+- 2026-06-13 — Feature 12 review fixes complete. Hardened the availability checker against SSRF by allowing only public HTTP(S) URLs, blocking local/internal hostnames and private IP resolutions, and manually validating every redirect before fetching the next hop. Wrapped the availability helper in a top-level agent-style try/catch, made HTML/text inspection truly bounded to 200KB via streamed reads, removed the unused abort variable, and kept uncertain network failures as active listings while updating `availability_checked_at`. Replaced raw PostgREST `.or()` URL interpolation in Adzuna upsert fallback with safe sequential equality lookups. Replaced browser alerts in job status and availability actions with inline token-styled success/error feedback and refresh-on-success behavior.
+- 2026-06-13 — Feature 13 review fixes complete. Kept the lifecycle controls and status badge as intentional Feature 12 integration, then moved Job Details rendering into focused `components/job-details/*` components, removed the direct page import of `agent/availability`, added an invisible API-backed availability auto-check, and changed transient job-details database errors from `notFound()` to a human-readable error card. Verified with lint, TypeScript, and production build.

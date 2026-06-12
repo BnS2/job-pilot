@@ -9,6 +9,8 @@ import {
   useState,
 } from "react";
 
+import { getJobStatusLabel, type JobStatus } from "@/lib/utils";
+
 const searchDebounceMs = 700;
 
 function SearchIcon({ className }: { className: string }) {
@@ -53,6 +55,7 @@ type Props = {
   q: string;
   match: string;
   sort: string;
+  status: JobStatus | "all";
 };
 
 function normalizeSearchValue(value: string): string {
@@ -63,7 +66,7 @@ function normalizeSearchValue(value: string): string {
     .slice(0, 80);
 }
 
-export function JobFilters({ q, match, sort }: Props) {
+export function JobFilters({ q, match, sort, status }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -71,8 +74,10 @@ export function JobFilters({ q, match, sort }: Props) {
   const [searchVal, setSearchVal] = useState(q);
   const [matchOpen, setMatchOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
   const matchMenuRef = useRef<HTMLDivElement>(null);
   const sortMenuRef = useRef<HTMLDivElement>(null);
+  const statusMenuRef = useRef<HTMLDivElement>(null);
 
   const createQueryString = useCallback(
     (params: Record<string, string | null>) => {
@@ -130,6 +135,10 @@ export function JobFilters({ q, match, sort }: Props) {
       if (sortOpen && !sortMenuRef.current?.contains(target)) {
         setSortOpen(false);
       }
+
+      if (statusOpen && !statusMenuRef.current?.contains(target)) {
+        setStatusOpen(false);
+      }
     }
 
     document.addEventListener("pointerdown", closeOnOutsidePointer);
@@ -137,7 +146,7 @@ export function JobFilters({ q, match, sort }: Props) {
     return () => {
       document.removeEventListener("pointerdown", closeOnOutsidePointer);
     };
-  }, [matchOpen, sortOpen]);
+  }, [matchOpen, sortOpen, statusOpen]);
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
@@ -161,8 +170,19 @@ export function JobFilters({ q, match, sort }: Props) {
     { value: "oldest", label: "Oldest" },
   ];
 
+  const statusOptions: Array<{ value: JobStatus | "all"; label: string }> = [
+    { value: "active", label: getJobStatusLabel("active") },
+    { value: "applied", label: getJobStatusLabel("applied") },
+    { value: "unavailable", label: getJobStatusLabel("unavailable") },
+    { value: "archived", label: getJobStatusLabel("archived") },
+    { value: "rejected", label: getJobStatusLabel("rejected") },
+    { value: "completed", label: getJobStatusLabel("completed") },
+    { value: "all", label: "All Statuses" },
+  ];
+
   const currentMatchLabel = matchOptions.find((o) => o.value === match)?.label || "All Matches";
   const currentSortLabel = sortOptions.find((o) => o.value === sort)?.label || "Match Score";
+  const currentStatusLabel = statusOptions.find((o) => o.value === status)?.label || "Active";
 
   return (
     <section
@@ -185,6 +205,48 @@ export function JobFilters({ q, match, sort }: Props) {
       <div className="hidden h-10 w-px bg-border lg:block" />
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative" ref={statusMenuRef}>
+          <button
+            className="inline-flex h-10 w-full min-w-36 items-center justify-between gap-3 rounded-md border border-border bg-surface px-4 text-sm font-medium leading-5 text-text-primary shadow-sm transition-colors hover:border-text-secondary cursor-pointer"
+            onClick={() => {
+              setStatusOpen(!statusOpen);
+              setMatchOpen(false);
+              setSortOpen(false);
+            }}
+            type="button"
+          >
+            {currentStatusLabel}
+            <ChevronIcon className="h-4 w-4 text-text-secondary" />
+          </button>
+
+          {statusOpen && (
+            <div className="absolute right-0 z-20 mt-2 w-48 origin-top-right rounded-md border border-border bg-surface shadow-lg focus:outline-none">
+              <div className="py-1">
+                {statusOptions.map((opt) => (
+                  <button
+                    key={opt.value}
+                    className={`block w-full px-4 py-2 text-left text-sm font-medium leading-5 transition-colors cursor-pointer ${
+                      status === opt.value
+                        ? "bg-accent-muted text-accent"
+                        : "text-text-primary hover:bg-surface-secondary hover:text-text-dark"
+                    }`}
+                    onClick={() => {
+                      const qs = createQueryString({
+                        status: opt.value === "active" ? null : opt.value,
+                      });
+                      replaceWithQuery(qs);
+                      setStatusOpen(false);
+                    }}
+                    type="button"
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Match Filter Dropdown */}
         <div className="relative" ref={matchMenuRef}>
           <button
@@ -192,6 +254,7 @@ export function JobFilters({ q, match, sort }: Props) {
             onClick={() => {
               setMatchOpen(!matchOpen);
               setSortOpen(false);
+              setStatusOpen(false);
             }}
             type="button"
           >
@@ -232,6 +295,7 @@ export function JobFilters({ q, match, sort }: Props) {
             onClick={() => {
               setSortOpen(!sortOpen);
               setMatchOpen(false);
+              setStatusOpen(false);
             }}
             type="button"
           >

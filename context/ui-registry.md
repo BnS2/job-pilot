@@ -358,6 +358,26 @@ Last updated: 2026-06-10
 **Pattern notes:**
 Converted to Client Component to support state management for complex user inputs. Manages typed local lists for skills (tags), industries (tags), education, optional cover-letter tone, and dynamic work experience roles (up to 3). Binds to the Server Action `saveProfile` inside a React `useTransition` for loading state handling. Editable inputs and selects use `bg-surface`; the disabled email field keeps the muted `bg-surface-secondary` treatment and preserved opacity so locked state is visually distinct without showing a text caret. Work experience date fields use a matching `h-5` header row so Start Date and End Date inputs stay horizontally aligned; the "Currently working here" checkbox sits in the End Date header area on desktop but stays after the End Date input in DOM order for keyboard flow. Skill and industry chips use the accent-muted token pattern; semantic missing-field chips remain error-colored.
 
+### Job Details Sections
+
+File: `components/job-details/*`
+Last updated: 2026-06-13
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-surface`, `bg-background`, `bg-surface-secondary` for icon wells   |
+| Border           | `border border-border`, `border-b border-border`, `border-error/20` for load errors |
+| Border radius    | `rounded-xl` for cards, `rounded-md` for buttons/icon wells, `rounded-full` for badges |
+| Text — primary   | `text-text-primary`, `text-accent-foreground` for primary CTAs         |
+| Text — secondary | `text-text-secondary`, `text-text-muted`                               |
+| Spacing          | `p-6`, `p-4`, `gap-3`, `gap-4`, `gap-5`, `gap-6`, `mt-1`, `mt-2`, `mt-3`, `mt-5`, `mt-6`, `mt-8` |
+| Hover state      | `hover:bg-surface-secondary`, `hover:border-text-secondary` on lifecycle secondary buttons |
+| Shadow           | `shadow-sm`                                                           |
+| Accent usage     | `bg-accent text-accent-foreground`, `bg-accent-muted text-accent`, `bg-success-lightest text-success-foreground` |
+
+**Pattern notes:**
+Job Details is now composed from route-level data plus focused `components/job-details` presentation sections. Cards preserve the supplied design pattern: white surface, token border, 16px radius, 24px card padding, and small token-colored icon wells. Compact stat-card values may truncate, but they must expose the full value through `title`; location uses the same card pattern but wraps because it is essential decision context. The lifecycle controls intentionally remain visible near Apply Now as Feature 12 integration; availability auto-refresh is invisible and calls the API route rather than importing agent logic into the page.
+
 ### Profile Page Shell
 
 File: `app/profile/page.tsx`
@@ -417,7 +437,7 @@ Last updated: 2026-06-12
 | Accent usage     | delegated to child components                                         |
 
 **Pattern notes:**
-The Find Jobs page is a protected Server Component that verifies the current InsForge user and composes the app navbar, search controls, filter toolbar, and jobs table. Feature 09 uses static mock rows only; real search, filtering, sorting, pagination, and jobs DB reads are deferred to Features 10 and 11. The real list can be scoped by a `run` URL parameter so a completed search shows only that search run's saved jobs instead of compounding every saved job into the current view. Query-string inputs are normalized before hitting the InsForge/PostgREST query builder, stable secondary ordering is applied before pagination, and out-of-range page numbers redirect back to the nearest valid page. Database failures render a token-styled error card instead of the empty jobs table.
+The Find Jobs page is a protected Server Component that verifies the current InsForge user and composes the app navbar, search controls, filter toolbar, and jobs table. Feature 09 uses static mock rows only; real search, filtering, sorting, pagination, and jobs DB reads are deferred to Features 10 and 11. The real list can be scoped by a `run` URL parameter so a completed search shows only that search run's saved jobs instead of compounding every saved job into the current view. Query-string inputs are normalized before hitting the InsForge/PostgREST query builder, stable secondary ordering is applied before pagination, and out-of-range page numbers redirect back to the nearest valid page. Feature 12 defaults the list to `status=active` while allowing explicit status views through the filter toolbar. Database failures render a token-styled error card instead of the empty jobs table.
 
 ### Find Jobs Search Controls
 
@@ -457,7 +477,7 @@ Last updated: 2026-06-12
 | Accent usage     | `text-accent bg-accent-muted` for active dropdown option              |
 
 **Pattern notes:**
-The toolbar handles filtering the retrieved jobs list through URL parameters backed by the server DB query. Converted to Client Component. It features a text filter input synced to local state and debounced by 700ms (also handling immediate Enter submit) to replace the `q` query parameter without adding typing steps to browser history. Custom openable dropdown menus use React state plus document-level outside-click handling to select Match Filters (All, High, Low) and Sort Orders (Score, Newest, Oldest), updating query parameters and resetting pagination without fixed-position backdrops or raw color classes.
+The toolbar handles filtering the retrieved jobs list through URL parameters backed by the server DB query. Converted to Client Component. It features a text filter input synced to local state and debounced by 700ms (also handling immediate Enter submit) to replace the `q` query parameter without adding typing steps to browser history. Custom openable dropdown menus use React state plus document-level outside-click handling to select Status (Active, Applied, Unavailable, Archived, Rejected, Completed, All), Match Filters (All, High, Low), and Sort Orders (Score, Newest, Oldest), updating query parameters and resetting pagination without fixed-position backdrops or raw color classes.
 
 ### Find Jobs Table
 
@@ -471,13 +491,33 @@ Last updated: 2026-06-12
 | Border radius    | `rounded-xl` table shell, `rounded-md` icon wells, `rounded-full` badges/bars |
 | Text — primary   | `text-text-primary`, `text-text-dark`                                 |
 | Text — secondary | `text-text-secondary`                                                 |
-| Spacing          | `overflow-hidden`, table `min-w-[1180px]`, header `px-6/8 py-5`, rows `px-6/8 py-6`, icon wells `h-10 w-10`, score bar `h-1.5 w-32` |
+| Spacing          | `overflow-hidden`, table `min-w-[1280px]`, header `px-6/8 py-5`, rows `px-6/8 py-6`, icon wells `h-10 w-10`, score bar `h-1.5 w-32` |
 | Hover state      | `hover:bg-surface-secondary` row hover, `hover:text-accent` for links |
 | Shadow           | `shadow-sm`                                                           |
-| Accent usage     | match fills `bg-success` (>=85), `bg-info-medium` (>=70), `bg-warning` (<70); source badges `bg-info-lightest text-info-foreground` and `bg-surface-secondary text-text-secondary` |
+| Accent usage     | match fills `bg-success` (>=85), `bg-info-medium` (>=70), `bg-warning` (<70); source badges `bg-info-lightest text-info-foreground` and `bg-surface-secondary text-text-secondary`; status badges use shared lifecycle token classes |
 
 **Pattern notes:**
-Renders real jobs queried from the database. Column parameters map `job.company` and `job.title` (as role), with user-safe fallback labels for nullable or drifted rows. Match score progress bar width is set dynamically via inline style after clamping the score to 0-100 and color-coded based on tone thresholds. Salary falls back to "Not specified". Source maps to Search or URL badge. Date Found uses a client/server-safe relative date formatter. Supports full empty state row when search/filtering yields zero records.
+Renders real jobs queried from the database. Column parameters map `job.company` and `job.title` (as role), with user-safe fallback labels for nullable or drifted rows. Match score progress bar width is set dynamically via inline style after clamping the score to 0-100 and color-coded based on tone thresholds. Salary falls back to "Not specified". Source maps to Search or URL badge. Status uses shared lifecycle labels/classes from `lib/utils.ts`. Date Found uses a client/server-safe relative date formatter. Supports a status-aware full empty state row when search/filtering yields zero records.
+
+### Job Details Page
+
+File: `app/find-jobs/[id]/page.tsx`
+Last updated: 2026-06-13
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-background`, `bg-surface`, icon wells `bg-surface-secondary`, token-tinted badge/icon wells |
+| Border           | `border border-border`, company research header `border-b border-border` |
+| Border radius    | `rounded-xl` cards/icon well, `rounded-md` buttons, `rounded-full` badges/icon wells |
+| Text — primary   | `text-text-primary`, `text-text-dark`                                 |
+| Text — secondary | `text-text-secondary`, `text-text-muted`, action feedback `text-success-foreground` / `text-error` |
+| Spacing          | page `max-w-[840px] gap-6 px-4 py-10 sm:px-6`, cards `p-6`, stat cards `p-4`, empty state `px-6 py-12`, action feedback `gap-2` |
+| Hover state      | action buttons `hover:bg-surface-secondary hover:border-text-secondary` |
+| Shadow           | `shadow-sm`                                                           |
+| Accent usage     | `bg-accent text-accent-foreground` for Research/Apply CTAs, `bg-success-lightest text-success-foreground` match and skill badges, `bg-accent-muted text-accent` gap skills/status |
+
+**Pattern notes:**
+The job details route follows `context/designs/job-details.png`: centered protected page, back link, summary card with company icon and View Job Post action, four compact stat cards, AI match reasoning card, skills comparison card, job description card, company research empty state, and full-width Apply CTA. Lifecycle status is shown as a compact pill beside the match score. Status and availability actions use small bordered secondary client buttons near the Apply action with disabled loading labels and inline token-styled success/error feedback; do not use browser alerts for this workflow.
 
 ### Find Jobs Pagination
 

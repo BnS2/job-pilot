@@ -11,6 +11,10 @@ export async function startResumeGenerationRun(userId: string): Promise<string |
   return startProfileAgentRun(userId, "resume_generation");
 }
 
+export async function startAvailabilityCheckRun(userId: string): Promise<string | null> {
+  return startProfileAgentRun(userId, "availability_check");
+}
+
 export async function startJobDiscoveryRun(
   userId: string,
   jobTitle: string,

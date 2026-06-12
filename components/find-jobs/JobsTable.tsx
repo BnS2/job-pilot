@@ -1,6 +1,12 @@
 import Link from "next/link";
 
 import { JobsPagination } from "@/components/find-jobs/JobsPagination";
+import {
+  getJobStatusBadgeClass,
+  getJobStatusLabel,
+  isJobStatus,
+  type JobStatus,
+} from "@/lib/utils";
 
 type JobRecord = {
   id: string;
@@ -10,6 +16,7 @@ type JobRecord = {
   salary: string | null;
   source: "search" | "url" | null;
   found_at: string | null;
+  status: string | null;
 };
 
 type Props = {
@@ -17,6 +24,7 @@ type Props = {
   page: number;
   pageSize: number;
   totalCount: number;
+  status: JobStatus | "all";
 };
 
 function BuildingIcon({ className }: { className: string }) {
@@ -103,7 +111,19 @@ function formatRelativeTime(dateString: string | null): string {
   }
 }
 
-export function JobsTable({ jobs, page, pageSize, totalCount }: Props) {
+function getSafeJobStatus(status: string | null): JobStatus {
+  return status && isJobStatus(status) ? status : "active";
+}
+
+function getEmptyStateCopy(status: JobStatus | "all"): string {
+  if (status === "all") {
+    return "No jobs found. Try adjusting your filters or click \"Find Jobs\" above to search for new matches.";
+  }
+
+  return `No ${getJobStatusLabel(status).toLowerCase()} jobs found. Try adjusting your filters or choose another status.`;
+}
+
+export function JobsTable({ jobs, page, pageSize, totalCount, status }: Props) {
   return (
     <section
       aria-labelledby="jobs-table-heading"
@@ -114,25 +134,28 @@ export function JobsTable({ jobs, page, pageSize, totalCount }: Props) {
       </h2>
 
       <div className="overflow-x-auto">
-        <table className="min-w-[1180px] table-fixed text-left">
+        <table className="min-w-[1280px] table-fixed text-left">
           <thead className="bg-surface-secondary">
             <tr className="border-b border-border">
-              <th className="w-[23%] px-8 py-5 text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
+              <th className="w-[22%] px-8 py-5 text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
                 Company
               </th>
-              <th className="w-[27%] px-6 py-5 text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
+              <th className="w-[25%] px-6 py-5 text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
                 Role
               </th>
-              <th className="w-[18%] px-6 py-5 text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
+              <th className="w-[17%] px-6 py-5 text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
                 Match Score
               </th>
-              <th className="w-[14%] px-6 py-5 text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
+              <th className="w-[13%] px-6 py-5 text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
                 Salary Est.
               </th>
               <th className="w-[8%] px-6 py-5 text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
                 Source
               </th>
-              <th className="w-[10%] px-6 py-5 text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
+              <th className="w-[8%] px-6 py-5 text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
+                Status
+              </th>
+              <th className="w-[7%] px-6 py-5 text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
                 Date Found
               </th>
             </tr>
@@ -141,10 +164,10 @@ export function JobsTable({ jobs, page, pageSize, totalCount }: Props) {
             {jobs.length === 0 ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-8 py-16 text-center text-sm font-medium text-text-secondary"
                 >
-                  No jobs found. Try adjusting your filters or click &quot;Find Jobs&quot; above to search for new matches.
+                  {getEmptyStateCopy(status)}
                 </td>
               </tr>
             ) : (
@@ -152,6 +175,7 @@ export function JobsTable({ jobs, page, pageSize, totalCount }: Props) {
                 const matchScore = getSafeMatchScore(job.match_score);
                 const company = job.company?.trim() || "Unknown company";
                 const title = job.title?.trim() || "Untitled role";
+                const jobStatus = getSafeJobStatus(job.status);
 
                 return (
                 <tr
@@ -200,6 +224,13 @@ export function JobsTable({ jobs, page, pageSize, totalCount }: Props) {
                       className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium leading-4 ${getSourceClass(job.source)}`}
                     >
                       {getSourceLabel(job.source)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-6">
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium leading-4 ${getJobStatusBadgeClass(jobStatus)}`}
+                    >
+                      {getJobStatusLabel(jobStatus)}
                     </span>
                   </td>
                   <td className="px-6 py-6 text-sm font-medium leading-5 text-text-secondary">
