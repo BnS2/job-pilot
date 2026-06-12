@@ -1,4 +1,5 @@
 import {
+  clearAuthCookies,
   DEFAULT_ACCESS_TOKEN_COOKIE,
   DEFAULT_REFRESH_TOKEN_COOKIE,
   updateSession,
@@ -13,8 +14,8 @@ export async function proxy(request: NextRequest) {
   const hasAccessToken = request.cookies.has(DEFAULT_ACCESS_TOKEN_COOKIE);
   const hasRefreshToken = request.cookies.has(DEFAULT_REFRESH_TOKEN_COOKIE);
 
-  if (!hasAccessToken && !hasRefreshToken) {
-    return redirectToLogin(request);
+  if (!hasRefreshToken) {
+    return redirectToLogin(request, hasAccessToken);
   }
 
   const response = NextResponse.next({ request });
@@ -26,17 +27,25 @@ export async function proxy(request: NextRequest) {
   });
 
   if (result.error || !result.accessToken) {
-    return redirectToLogin(request);
+    return redirectToLogin(request, true);
   }
 
   return response;
 }
 
-function redirectToLogin(request: NextRequest): NextResponse {
+function redirectToLogin(request: NextRequest, shouldClearAuth = false): NextResponse {
   const loginUrl = new URL("/login", request.url);
-  loginUrl.searchParams.set("next", request.nextUrl.pathname);
+  loginUrl.searchParams.set(
+    "next",
+    `${request.nextUrl.pathname}${request.nextUrl.search}`,
+  );
+  const response = NextResponse.redirect(loginUrl);
 
-  return NextResponse.redirect(loginUrl);
+  if (shouldClearAuth) {
+    clearAuthCookies(response.cookies);
+  }
+
+  return response;
 }
 
 function createRequestCookieStore(request: NextRequest): CookieStore {

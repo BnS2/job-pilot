@@ -75,6 +75,8 @@ Full width layout on all pages. No sidebar.
 - Gemini 3.5 Flash scores each job 0-100 against user profile
 - Jobs appear in the job list below
 - After search completes a message shows: "Found 8 jobs and saved 4 strong matches"
+- New searches refresh existing saved jobs when the same external listing is found again instead of creating duplicate pipeline rows
+- Jobs remain saved as history, but the default list focuses on active opportunities
 
 ### Job Matching
 
@@ -83,6 +85,21 @@ Full width layout on all pages. No sidebar.
 - All jobs visible in Find Jobs page regardless of score
 - High scoring jobs visually highlighted
 - Low scoring jobs still accessible — user decides what to do
+
+### Job Lifecycle
+
+- Saved jobs are treated as a lightweight pipeline, not disposable search results
+- Every job has a lifecycle status:
+  - `active` — available and worth showing in the default jobs list
+  - `unavailable` — listing appears closed, expired, removed, or unreachable
+  - `archived` — user hid the opportunity without applying
+  - `applied` — user applied externally
+  - `rejected` — user marked the opportunity as no longer progressing
+  - `completed` — user completed the process or no further action is needed
+- The default `/find-jobs` view shows `active` jobs unless the user selects another status filter
+- Stale, closed, archived, applied, rejected, and completed jobs are soft-hidden from the default working list but retained for history, analytics, and future resume/application context
+- Availability can be refreshed when a job reappears in search, when opening job details, or through an explicit status refresh action
+- Do not hard-delete jobs as a normal cleanup path; delete only for explicit destructive user actions or administrative repair
 
 ### Job Details Page
 
@@ -130,7 +147,7 @@ Do not build the browser-agent fallback until evidence shows Gemini Search + URL
 
 ### Dashboard
 
-- Stats bar — 4 cards: Total Jobs Found, Avg. Match Rate, Companies Researched, Jobs This Week
+- Stats bar — 4 cards: Active Jobs Found, Avg. Match Rate, Companies Researched, Jobs This Week
 - Recent activity — list of last 5-10 user actions pulled from DB
 - Analytics section (PostHog powered):
   - Jobs found over time — line chart
@@ -151,6 +168,8 @@ Do not build the browser-agent fallback until evidence shows Gemini Search + URL
   - Click job row → opens job details page
   - Pagination — 20 jobs per page
   - "Jobs by Adzuna" credit displayed on job listings
+- Job status filter — Active by default, with access to unavailable, archived, applied, rejected, and completed jobs
+- Stale or unavailable jobs are visibly labeled and excluded from active-job metrics by default
 
 ---
 
@@ -169,6 +188,13 @@ Do not build the browser-agent fallback until evidence shows Gemini Search + URL
 - Generated per job when user clicks Research Company
 - Never affects profile data or match score
 
+### Job Lifecycle Data
+
+- Stored on each `jobs` row using status and availability timestamps
+- Used to keep the active jobs list useful without losing historical context
+- New discovery runs should upsert matching external listings: update `last_seen_at`, `found_at`, availability fields, and refreshed metadata instead of creating duplicate rows
+- Jobs should move out of `active` only through user action or a verified availability check, not merely because they are old
+
 ---
 
 ## Features In Scope
@@ -181,6 +207,8 @@ Do not build the browser-agent fallback until evidence shows Gemini Search + URL
 - Resume PDF upload with optional profile auto-fill via Gemini 3.5 Flash
 - Resume PDF generation from profile data using Gemini 3.5 Flash
 - Adzuna API job discovery — searches by title and location, category filtered to IT jobs
+- Job lifecycle management — active, unavailable, archived, applied, rejected, completed
+- Stale listing detection and soft-hiding from the default active jobs view
 - Gemini 3.5 Flash job matching with score, reason, matched skills, missing skills
 - Job details page with full structured description
 - Company Research Agent — Gemini 2.5 Flash Search grounding discovers public pages, Gemini 2.5 Flash URL Context reads them, Gemini 3.5 Flash builds dossier
@@ -206,7 +234,6 @@ Do not build the browser-agent fallback until evidence shows Gemini Search + URL
 - Live browser embed on dashboard
 - Live agent feed / realtime log
 - Job-specific profile form on job details page
-- Dismiss job feature
 - Email or push notifications
 - Mobile app
 - Team or multi-user accounts
@@ -222,6 +249,8 @@ Do not build the browser-agent fallback until evidence shows Gemini Search + URL
 ```typescript
 job_search_started; // { userId, jobTitle, location }
 job_found; // { userId, source, matchScore }
+job_status_changed; // { userId, jobId, fromStatus, toStatus, reason }
+job_unavailable_detected; // { userId, jobId, source, reason }
 profile_completed; // { userId }
 company_researched; // { userId, jobId, company }
 ```

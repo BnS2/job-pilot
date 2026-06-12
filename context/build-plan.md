@@ -96,6 +96,7 @@ All InsForge tables and storage bucket created before any data is written.
   - tailored fields
   - company_research jsonb column
   - source values: 'search' | 'url'
+  - lifecycle fields: status, status_reason, source_job_id, last_seen_at, availability_checked_at, unavailable_at, archived_at, applied_at, completed_at
 - Create `agent_logs` table
 - Create `resumes` storage bucket with authenticated access only
 - Row level security policies on all four tables — always filter by user_id
@@ -186,6 +187,11 @@ Generate a clean professional PDF resume from current profile data using Gemini 
 
 Build the complete Find Jobs page UI with mock data. No logic yet.
 
+**Design note:**
+
+- `context/designs/find-jobs.png` is the visual source of truth for layout, spacing, card treatment, table styling, and sample rows.
+- Include the `SOURCE` column from the product schema/build plan even though the screenshot omits it. The database already constrains `jobs.source` to `'search' | 'url'`, so the UI reserves space for Search/URL badges while keeping badge colors aligned with `ui-tokens.md`.
+
 **UI:**
 
 - Search controls card at top:
@@ -207,10 +213,11 @@ Agent calls Adzuna API to find jobs matching user's search criteria, scores them
 **Logic:**
 
 - POST /api/agent/find receives jobTitle and location from client
+- If the search location is blank, fall back to `profiles.location` only when it looks like a supported Adzuna market or Remote; if no usable location remains, omit Adzuna `where`
+- Detect country with a small deterministic mapper for `us`, `gb`, `ca`, and `au`; default to `us`
 - Call Adzuna API:
   - GET https://api.adzuna.com/v1/api/jobs/{country}/search/1
-  - params: what={jobTitle}, where={location}, results_per_page=10, app_id, app_key
-  - Detect country from location input — default to 'us'
+  - params: what={jobTitle}, optional where={location}, category=it-jobs, results_per_page=10, app_id, app_key
 - For each job returned:
   - Extract title, company, location, salary, description snippet, redirect_url
   - Gemini 3.5 Flash scores job against user profile:
@@ -218,12 +225,16 @@ Agent calls Adzuna API to find jobs matching user's search criteria, scores them
     - matchReason — one paragraph explanation
     - matchedSkills — skills user has that job requires
     - missingSkills — skills job requires that user lacks
-  - Save complete record to jobs table:
+  - Save or refresh complete record in jobs table:
     - source: 'search'
     - run_id from agent_runs record
     - All structured fields saved
+- De-dupe repeated Adzuna results within one response by ID / redirect URL
+- Cross-run duplicates are resolved by Feature 12 lifecycle upsert semantics: match existing user jobs by `source_job_id` first, then normalized source/apply URL
 - Create agent_run record in DB
 - After all jobs saved — update agent_run with total count, return success message to frontend
+- If Adzuna returns zero jobs, return a normal empty-search response instead of an HTTP error
+- The Find Jobs table remains mock-data/presentational until Feature 11 wires DB querying, filtering, sorting, and pagination
 
 **PostHog events:** `job_search_started`, `job_found`
 
@@ -246,9 +257,76 @@ Wire filter tabs, sort dropdown, text search, and pagination to real InsForge DB
 
 ---
 
+### 12 Job Lifecycle + Stale Listing Handling
+
+Make saved jobs behave like an active opportunity pipeline rather than an endlessly growing raw search dump.
+
+**Schema / migration:**
+
+- Add lifecycle columns to `jobs` if they are not already present:
+  - `source_job_id text`
+  - `status text default 'active'`
+  - `status_reason text`
+  - `last_seen_at timestamptz`
+  - `availability_checked_at timestamptz`
+  - `unavailable_at timestamptz`
+  - `archived_at timestamptz`
+  - `applied_at timestamptz`
+  - `completed_at timestamptz`
+- Add allowed status constraint: `active`, `unavailable`, `archived`, `applied`, `rejected`, `completed`
+- Add indexes for `jobs(user_id, status)`, `jobs(user_id, source_job_id)`, and `jobs(user_id, last_seen_at DESC)`
+- Add a partial uniqueness guard where practical for provider IDs: one active provider listing per user/source/source_job_id
+
+**Logic:**
+
+- New Adzuna discoveries upsert existing jobs instead of inserting duplicates across runs:
+  - Prefer matching on `source_job_id`
+  - Fall back to normalized `source_url` / `external_apply_url`
+  - Refresh metadata, match fields, `run_id`, `found_at`, and `last_seen_at`
+  - Preserve user-owned statuses such as `applied`, `archived`, `rejected`, and `completed`
+  - If a previously `unavailable` job is found again, move it back to `active` and clear `unavailable_at`
+- Add `actions/jobs.ts` for user-triggered status updates:
+  - Archive job
+  - Mark applied
+  - Mark rejected
+  - Mark completed
+  - Restore to active
+- Add a lightweight availability check helper:
+  - Follow `source_url` / `external_apply_url` with server-side `fetch`
+  - Mark `unavailable` only on clear signals such as 404, 410, explicit expired/closed pages, or provider-confirmed absence
+  - Do not mark unavailable on timeouts, rate limits, bot blocks, or ambiguous redirects
+  - Update `availability_checked_at` every time a check completes
+- Store lifecycle changes in `agent_logs` when agent-driven, and capture lifecycle PostHog events.
+- Do not hard-delete stale jobs as normal cleanup. Use soft status transitions.
+
+**UI:**
+
+- Default `/find-jobs` list shows `active` jobs.
+- Add a status filter with Active, Applied, Unavailable, Archived, Rejected, Completed, and All.
+- Existing match filters still apply within the selected status.
+- Latest-search `run` views may show that run's saved/refreshed active results, but unavailable/completed rows should remain visibly labeled if included by explicit filters.
+- Job rows and job details display a compact status badge.
+- Job details page exposes lifecycle actions near Apply Now:
+  - Mark Applied
+  - Archive
+  - Mark Rejected
+  - Mark Completed
+  - Restore Active when applicable
+- Empty states should make the selected status clear, e.g. no active jobs vs no archived jobs.
+
+**Dashboard effects:**
+
+- Active opportunity metrics exclude `unavailable`, `archived`, `rejected`, and `completed`.
+- Applied/completed history can be shown in recent activity and future pipeline metrics.
+- Total historical jobs may still exist as a secondary metric, but should not replace active opportunity counts.
+
+**PostHog events:** `job_status_changed`, `job_unavailable_detected`
+
+---
+
 ## Phase 4 — Job Details Page
 
-### 12 Job Details Page — Full UI
+### 13 Job Details Page — Full UI
 
 Build the complete job details page UI. Job data from DB is already available from Phase 3 — wire real data for all job info and match sections immediately. Company research section shows empty state only.
 
@@ -262,10 +340,11 @@ Build the complete job details page UI. Job data from DB is already available fr
 - Job Description section — description content from Adzuna
 - Company Research card — empty state with Research Company button. After research: structured dossier with company overview, tech stack, culture, why this role, interview prep
 - Apply Now button (links to redirect_url, opens in new tab)
+- Job status badge and lifecycle actions from Feature 12
 
 ---
 
-# Feature 13 — Company Research Agent (Updated)
+# Feature 14 — Company Research Agent (Updated)
 
 Agent researches the company using Gemini 2.5 Flash Google Search grounding and URL Context, then builds a structured dossier with Gemini 3.5 Flash. No Browserbase, Stagehand, Playwright, or Puppeteer is used. Three data sources are fused together: company website content, job description from DB, user profile from DB.
 
@@ -392,7 +471,7 @@ Only add a Playwright + Gemini browser worker if real usage proves Gemini Search
 - Public company content requires JavaScript interactions before it can be read
 - Product scope expands to visual inspection, live browser sessions, form filling, or auto-apply
 
-If fallback is needed, keep it as Feature 13B:
+If fallback is needed, keep it as Feature 14B:
 
 - Add a separate worker/service, not a long-running Next.js route handler
 - Worker launches Playwright Chromium locally or in self-hosted infrastructure
@@ -420,12 +499,12 @@ The Company Research card on the job details page must render all 9 fields:
 
 ## Phase 5 — Dashboard
 
-### 14 Dashboard Page — Full UI
+### 15 Dashboard Page — Full UI
 
 Build the complete dashboard UI with mock data.
 **UI:**
 
-- Four stat cards: Total Jobs Found, Avg. Match Rate, Companies Researched, Cover Letters Generated — all showing mock numbers with trend indicators
+- Four stat cards: Active Jobs Found, Avg. Match Rate, Companies Researched, Jobs This Week — all showing mock numbers with trend indicators
 - Recent Activity card — list of 5 activity entries with colored dots and timestamps
 - Resume Tailoring Activity — bar chart (mock data, days of week)
 - Jobs Found Over Time — line chart (mock data, days of week)
@@ -434,20 +513,21 @@ Build the complete dashboard UI with mock data.
 
 ---
 
-### 15 Stats Bar — Real Data
+### 16 Stats Bar — Real Data
 
 Wire four stat cards to real InsForge DB data for current user.
 
 **Logic:**
 
-- Total Jobs Found — COUNT of jobs where user_id = current user
-- Avg. Match Rate — AVG of match_score across all user jobs
+- Active Jobs Found — COUNT of jobs where user_id = current user and status = active
+- Avg. Match Rate — AVG of match_score across active jobs for current user
 - Companies Researched — COUNT of jobs where company_research IS NOT NULL and user_id = current user
-- Jobs This Week — COUNT of jobs found in last 7 days
+- Jobs This Week — COUNT of active jobs found or refreshed in last 7 days
+- Historical totals can be added as secondary context, but primary opportunity metrics should not count unavailable, archived, rejected, or completed rows
 
 ---
 
-### 16 Recent Activity — Real Data
+### 17 Recent Activity — Real Data
 
 Wire recent activity list to real InsForge DB data for current user.
 
@@ -455,15 +535,17 @@ Wire recent activity list to real InsForge DB data for current user.
 
 - Query agent_runs table — most recent runs for current user
 - Query jobs table — most recent company research entries for current user
+- Query recent lifecycle changes when available through agent_logs or status timestamps
 - Merge and sort all by created_at descending — take last 5-10 entries
 - Format each into human readable string:
   - agent_run completed → "Found X jobs for [jobTitle] — [time ago]"
   - company_research populated → "Researched [company] — [time ago]"
+  - job status changed → "Marked [company] [status] — [time ago]"
 - Color coded dot per entry type — info blue, success green
 
 ---
 
-### 17 Analytics Charts — PostHog Data
+### 18 Analytics Charts — PostHog Data
 
 Wire three dashboard charts to real PostHog event data for current user.
 
@@ -472,6 +554,7 @@ Wire three dashboard charts to real PostHog event data for current user.
 - Jobs Found Over Time — query PostHog for job_found events where distinctId = current userId, last 30 days, group by day
 - Match Score Distribution — query PostHog for job_found events, extract matchScore property, group into ranges: 50-60, 60-70, 70-80, 80-90, 90-100
 - Company Research Activity — query PostHog for company_researched events where distinctId = current userId, last 7 days, group by day
+- Lifecycle Activity — query PostHog for job_status_changed / job_unavailable_detected when adding pipeline health views
 - All three charts rendered with recharts
 - Empty state shown for each chart when no data exists yet
 
@@ -483,7 +566,7 @@ Wire three dashboard charts to real PostHog event data for current user.
 | --------------------- | -------- |
 | Phase 1 — Foundation  | 4        |
 | Phase 2 — Profile     | 4        |
-| Phase 3 — Find Jobs   | 3        |
+| Phase 3 — Find Jobs   | 4        |
 | Phase 4 — Job Details | 2        |
 | Phase 5 — Dashboard   | 4        |
-| **Total**             | **17**   |
+| **Total**             | **18**   |

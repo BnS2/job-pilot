@@ -268,6 +268,7 @@ const jobRecord = {
   user_id: userId,
   run_id: runId,
   source: "search", // always 'search' for Adzuna jobs
+  source_job_id: job.id,
   source_url: job.redirect_url,
   external_apply_url: job.redirect_url,
   title: job.title,
@@ -282,7 +283,9 @@ const jobRecord = {
   match_reason: scoredJob.matchReason,
   matched_skills: scoredJob.matchedSkills,
   missing_skills: scoredJob.missingSkills,
+  status: "active",
   found_at: new Date().toISOString(),
+  last_seen_at: new Date().toISOString(),
 };
 ```
 
@@ -291,9 +294,23 @@ const jobRecord = {
 - Always include `category=it-jobs` — never search Adzuna without this filter
 - Never pass `where` if location is empty — omit the parameter entirely
 - `source` is always `'search'` for Adzuna jobs — never any other value
+- Save `source_job_id` when Adzuna provides an ID. Use it as the preferred cross-run dedupe key for the current user.
+- Discovery should upsert matching existing jobs for the same user instead of inserting duplicates across search runs. Match by `source_job_id` first, then normalized `source_url` / `external_apply_url` when a provider ID is missing.
+- When a matching existing job is found, refresh listing metadata, match fields, `run_id`, `found_at`, and `last_seen_at`. Preserve user pipeline status unless the existing row is `unavailable` and the listing is now confirmed available again.
+- Do not hard-delete stale listings. Mark them `unavailable`, `archived`, `applied`, `rejected`, or `completed` through explicit lifecycle transitions.
 - `salary_is_predicted: "1"` means Adzuna estimated the salary — this is normal
 - Adzuna description is a snippet — Gemini scores from it, not a full description
 - Default country to `'us'` — support `gb`, `au`, `ca` as alternatives
+
+### Job Availability Refresh
+
+Use lightweight checks first. A job is considered unavailable only after a deterministic signal, such as:
+
+- The original source or employer apply URL returns a clear 404 / 410 / expired page response.
+- The provider no longer returns the listing by stable provider ID when such a lookup is available.
+- The resolved employer URL redirects to a generic jobs page with no role signal and no usable apply action.
+
+Avoid marking a job unavailable just because an HTTP request times out, a provider rate-limits, or a page blocks bot traffic. In uncertain cases, keep the current status, update `availability_checked_at`, and store a warning in `agent_logs`.
 
 ---
 
@@ -377,7 +394,7 @@ const result = matchSchema.parse(JSON.parse(response.text ?? "{}"));
 
 **Max output tokens:**
 
-- Job matching + scoring: `400`
+- Job matching + scoring: `700`
 - Company research synthesis: `1000`
 - Resume generation: `1200`
 - Profile extraction from resume: `1000`
@@ -388,6 +405,7 @@ const result = matchSchema.parse(JSON.parse(response.text ?? "{}"));
 - Always use structured output for data saved to DB
 - Always validate parsed JSON with Zod before using it
 - Always wrap Gemini calls in try/catch and log failures to agent_logs for agent operations
+- For job matching, retry transient Gemini errors and malformed or empty structured JSON before falling back from `GEMINI_TEXT_MODEL` to `GEMINI_FAST_MODEL`
 - For resume extraction and resume generation, retry transient Gemini errors and fall back from `GEMINI_TEXT_MODEL` to `GEMINI_FAST_MODEL` before returning a temporary-service error
 - Match threshold is always `MATCH_THRESHOLD` from `lib/utils.ts` — never hardcode 70
 - Company research synthesis must always return a complete dossier — never return empty even if web research failed

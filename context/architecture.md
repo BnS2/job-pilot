@@ -174,6 +174,28 @@ Dossier saved to jobs.company_research
 Page data revalidated
 ```
 
+### Job Lifecycle Updates (Server Actions + Agent Checks)
+
+```text
+User marks a job applied / archived / completed
+        ↓
+Server Action in actions/jobs.ts
+        ↓
+Update jobs.status and matching timestamp fields
+        ↓
+Revalidate /find-jobs and /find-jobs/[id]
+```
+
+```text
+New Adzuna search or explicit availability refresh
+        ↓
+Agent/API checks whether the external listing is still present or reachable
+        ↓
+Existing matching job rows are updated instead of duplicated
+        ↓
+Closed, expired, removed, or unreachable listings are marked unavailable
+```
+
 ### Resume Extraction (API Route)
 
 ```text
@@ -259,6 +281,7 @@ URL saved to profiles table
 | run_id             | uuid        | References agent_runs — null if from URL input |
 | user_id            | uuid        | References profiles                            |
 | source             | text        | search / url                                   |
+| source_job_id      | text        | Stable provider listing ID when available      |
 | source_url         | text        | Original job listing URL                       |
 | external_apply_url | text        | Direct company apply URL                       |
 | title              | text        |                                                |
@@ -277,7 +300,24 @@ URL saved to profiles table
 | matched_skills     | text[]      | Skills user has that match                     |
 | missing_skills     | text[]      | Skills user lacks                              |
 | company_research   | jsonb       | Company dossier from research agent            |
+| status             | text        | active / unavailable / archived / applied / rejected / completed |
+| status_reason      | text        | Human-readable reason for latest status change |
 | found_at           | timestamptz |                                                |
+| last_seen_at       | timestamptz | Last time discovery confirmed the listing      |
+| availability_checked_at | timestamptz | Last time availability was checked         |
+| unavailable_at     | timestamptz | Set when listing is marked unavailable         |
+| archived_at        | timestamptz | Set when user archives the job                 |
+| applied_at         | timestamptz | Set when user marks the job applied            |
+| completed_at       | timestamptz | Set when user marks the job completed          |
+
+Job lifecycle rules:
+
+- `active` is the default status for newly discovered or refreshed listings.
+- Default Find Jobs and Dashboard opportunity metrics exclude `unavailable`, `archived`, `rejected`, and `completed` unless a view explicitly asks for them.
+- `applied` remains part of the user's pipeline history and may appear in applied/completed filters, but it should not be counted as a new active search result.
+- Discovery uses `source_job_id` when available, falling back to normalized `source_url` / `external_apply_url`, to upsert existing listings for the same user instead of duplicating rows across search runs.
+- A refreshed existing listing should update `run_id`, `found_at`, `last_seen_at`, matching fields, and changed listing metadata while preserving user-owned lifecycle state unless the row was `unavailable` and the listing is now confirmed available again.
+- Normal cleanup is soft state transition, not hard delete.
 
 ### `agent_logs`
 
@@ -502,3 +542,5 @@ Rules the AI agent must never violate:
 - Always scope InsForge queries to the current user_id — never query without a user filter.
 - Adzuna API always includes category=it-jobs — never search without this filter.
 - jobs.source is always 'search' or 'url' — never any other value.
+- Jobs are a persistent user pipeline. Do not hard-delete or overwrite lifecycle history during discovery; upsert refreshed listings and use status transitions for stale, closed, archived, applied, rejected, and completed rows.
+- Default user-facing job lists should show active opportunities first and hide unavailable/completed rows unless the user explicitly filters for them.

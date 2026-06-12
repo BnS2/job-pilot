@@ -11,6 +11,37 @@ export async function startResumeGenerationRun(userId: string): Promise<string |
   return startProfileAgentRun(userId, "resume_generation");
 }
 
+export async function startJobDiscoveryRun(
+  userId: string,
+  jobTitle: string,
+  location: string | null,
+): Promise<string | null> {
+  try {
+    const insforge = await createInsforgeServer();
+    const { data, error } = await insforge.database
+      .from("agent_runs")
+      .insert([{
+        user_id: userId,
+        status: "running",
+        job_title_searched: jobTitle,
+        location_searched: location,
+        jobs_found: 0,
+      }])
+      .select("id")
+      .single();
+
+    if (error || !data?.id) {
+      console.error("[agent/logs] Failed to create job discovery run:", error);
+      return null;
+    }
+
+    return data.id;
+  } catch (error) {
+    console.error("[agent/logs] System error creating job discovery run:", error);
+    return null;
+  }
+}
+
 async function startProfileAgentRun(userId: string, runType: string): Promise<string | null> {
   try {
     const insforge = await createInsforgeServer();
@@ -42,6 +73,7 @@ export async function finishAgentRun(
   userId: string,
   runId: string | null,
   status: Exclude<AgentRunStatus, "running">,
+  jobsFound?: number,
 ): Promise<void> {
   if (!runId) {
     return;
@@ -54,6 +86,7 @@ export async function finishAgentRun(
       .update({
         status,
         completed_at: new Date().toISOString(),
+        ...(typeof jobsFound === "number" ? { jobs_found: jobsFound } : {}),
       })
       .eq("id", runId)
       .eq("user_id", userId);
@@ -71,6 +104,7 @@ export async function logAgentMessage(
   runId: string | null,
   level: AgentLogLevel,
   message: string,
+  jobId?: string,
 ): Promise<void> {
   if (!runId) {
     console.error("[agent/logs] Missing run_id for agent log:", message);
@@ -86,6 +120,7 @@ export async function logAgentMessage(
         run_id: runId,
         level,
         message,
+        ...(jobId ? { job_id: jobId } : {}),
       }]);
 
     if (error) {

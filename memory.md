@@ -1,71 +1,59 @@
-# Memory — Resume Review Follow-Up
+# Memory — JobPilot Find Jobs + Lifecycle Scope
 
-Last updated: 2026-06-12 01:18:33 PST
+Last updated: 2026-06-12 21:01 PST
 
 ## What was built
 
-- Completed the pasted review follow-up for the Phase 2 profile/resume work.
-- Modified resume storage/profile safety paths:
-  - `actions/profile.ts`
-  - `components/profile/ResumeUpload.tsx`
-  - `app/api/resume/extract/route.ts`
-- Added shared Gemini retry/error helpers in `agent/geminiUtils.ts` and updated:
-  - `agent/extractor.ts`
-  - `agent/resumeGenerator.ts`
-- Improved MarkItDown subprocess error handling in `agent/resumeText.ts`.
-- Added accessibility fixes:
-  - `aria-current="page"` on active nav links in `components/layout/Navbar.tsx`
-  - progressbar ARIA semantics in `components/profile/CompletionIndicator.tsx`
-- Fixed profile completion data flow in `app/profile/page.tsx` so the page uses dynamically calculated `is_complete`, `completionPercentage`, and `missingFields`.
-- Updated documentation/bookkeeping:
-  - `context/architecture.md`
-  - `context/library-docs.md`
-  - `context/progress-tracker.md`
-  - `context/ui-registry.md`
-  - `migrations/005_profile_backfill.sql`
-  - `requirements.txt`
+Feature 11 — Filter + Sort + Pagination is complete.
+
+- `/find-jobs` now reads real jobs from InsForge for the authenticated user.
+- Filtering, sorting, debounced text search, pagination, and latest-run scoping are wired.
+- Successful Find Jobs searches route to `/find-jobs?run={runId}` so the immediate results view is scoped to the latest run instead of mixing all saved jobs.
+- Auth expiry handling was tightened with shared client helpers, `AuthSessionGuard`, protected route redirects, and refresh-cookie cleanup.
+
+This session also updated project context docs to add lifecycle/stale-listing handling as a first-class requirement:
+
+- `context/project-overview.md`
+- `context/architecture.md`
+- `context/build-plan.md`
+- `context/library-docs.md`
+- `context/code-standards.md`
+- `context/progress-tracker.md`
 
 ## Decisions made
 
-- The InsForge Storage SDK surface currently exposes upload/download/remove, not object metadata lookup, so resume ownership is enforced by requiring the stored key to be under the authenticated user namespace and the returned URL path to match that key.
-- Failed resume metadata writes now attempt to remove the just-uploaded object before showing the user an error.
-- Resume deletion no longer clears `profiles.resume_pdf_url` / `profiles.resume_pdf_key` if storage deletion fails.
-- Resume extraction runs are created before profile lookup/storage download so early failures can be associated with a run and marked failed.
-- `requirements.txt` pins the locally installed MarkItDown version: `markitdown[pdf]==0.1.6`.
+- Saved jobs are a persistent user pipeline, not disposable search results.
+- Default user-facing job lists should focus on active opportunities.
+- Stale, closed, unavailable, archived, applied, rejected, and completed jobs should be soft-hidden from the default active list, not hard-deleted.
+- New Adzuna searches should eventually upsert matching external listings instead of creating cross-run duplicates.
+- Job lifecycle statuses are now in scope: `active`, `unavailable`, `archived`, `applied`, `rejected`, `completed`.
+- Feature 12 is now “Job Lifecycle + Stale Listing Handling,” inserted before Job Details and Dashboard work.
 
 ## Problems solved
 
-- Prevented client-provided resume metadata from being persisted unless it matches the authenticated user-owned storage path.
-- Prevented orphaned storage objects when upload succeeds but profile metadata persistence fails.
-- Prevented DB resume references from being cleared after failed storage deletion.
-- Removed duplicated Gemini retry helpers between extraction and resume generation.
-- MarkItDown conversion no longer swallows unexpected subprocess failures silently; expected missing-command/timeout-style failures still fall back to `pdf-parse`.
-- Preserved original `auth.users.created_at` in `migrations/005_profile_backfill.sql` instead of backfilling profile creation time with `now()`.
-- Added missing `profiles.resume_pdf_key` documentation and fixed markdown code fence language annotations.
+- Clarified why role/job lists appeared to pile up: searches persist rows in `jobs`; previous behavior lacked cross-run dedupe/upsert and relied on `run` URL scoping for latest-search display.
+- Turned that concern into explicit product architecture instead of leaving it as an implementation ambiguity.
+- Updated dashboard planning so primary metrics count active opportunities, not stale or completed historical rows.
 
 ## Current state
 
-- The review pass found no remaining issues in the changed follow-up code.
-- Validation passed:
-  - `git diff --check`
-  - `npm run lint`
-  - `npx tsc --noEmit`
-  - `npm run build` with network access for the configured Google Font fetch
-- The working tree is still uncommitted and includes the review follow-up changes plus the existing Phase 2 profile/resume work.
-- There are no known functional blockers in the profile upload/delete/extract/generate flows from this review.
+- `context/progress-tracker.md` says current phase is Phase 3 — Find Jobs Page.
+- Last completed feature is 11 Filter + Sort + Pagination.
+- Next planned feature is 12 Job Lifecycle + Stale Listing Handling.
+- Working tree is still uncommitted and includes many prior feature/auth/find-jobs changes plus the lifecycle context updates.
+- No tests were run for the lifecycle docs update because it was documentation/context only.
 
 ## Next session starts with
 
-Begin Feature 09 — Find Jobs Page Full UI:
-
 1. Run `/remember restore`.
-2. Read the required context files in the order specified by `AGENTS.md`.
-3. Run `/architect` before implementation.
-4. Build the Find Jobs page UI with mock data first, matching `context/build-plan.md` Feature 09.
-5. Use existing UI registry patterns before inventing new table, filter, and search-control styling.
+2. Read the required context files from `AGENTS.md` in order.
+3. Start Feature 12 from `context/build-plan.md`: add job lifecycle schema/migration, status filtering, status actions, availability refresh rules, and Adzuna cross-run upsert behavior.
+4. Use InsForge docs/skill before touching backend schema or SDK code.
 
 ## Open questions
 
-- Production deployment still needs a decision on how to install Python dependencies from `requirements.txt` if MarkItDown should be active outside local development.
-- The uncommitted working tree spans multiple completed features and review fixes; decide whether to review/commit all Phase 2 work together or split it into feature-sized commits.
-- There is still no automated test coverage for the storage failure branches added in the review follow-up.
+- Decide whether to commit the accumulated uncommitted work before implementing Feature 12.
+- Define exact UX placement for status filter/actions when implementing lifecycle UI.
+- Decide how aggressive availability checks should be in v1, especially for ambiguous redirects, bot blocks, rate limits, and timeouts.
+- Production deployment decision on Python/MarkItDown dependencies remains unresolved.
+- Full `?next=` post-login routing through OAuth callback still needs a follow-up design decision.
