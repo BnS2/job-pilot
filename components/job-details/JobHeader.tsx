@@ -1,20 +1,22 @@
+"use client";
+
 import Link from "next/link";
 
+import { useJobStatus } from "@/components/job-details/JobStatusProvider";
 import {
   getJobStatusBadgeClass,
   getJobStatusLabel,
-  type JobStatus,
 } from "@/lib/utils";
 
 type Props = {
   applyUrl: string | null;
   company: string;
   matchScore: number;
-  status: JobStatus;
   title: string;
 };
 
-export function JobHeader({ applyUrl, company, matchScore, status, title }: Props) {
+export function JobHeader({ applyUrl, company, matchScore, title }: Props) {
+  const { status } = useJobStatus();
   return (
     <section className="flex flex-col gap-5 rounded-xl border border-border bg-surface p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 items-center gap-4">

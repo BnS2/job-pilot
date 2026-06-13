@@ -19,7 +19,11 @@ function firstParam(value: string | string[] | undefined): string | null {
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const insforge = await createInsforgeServer();
-  const { data } = await insforge.auth.getCurrentUser();
+  const { data, error } = await insforge.auth.getCurrentUser();
+
+  if (error) {
+    console.error("[login] Auth lookup error:", error);
+  }
 
   if (data.user) {
     redirect("/dashboard");
@@ -30,7 +34,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
+      <Navbar showCta={false} />
       <main className="mx-auto flex min-h-[calc(100vh-64px)] max-w-[1110px] items-center justify-center px-4 py-12 sm:px-6">
         <section className="grid w-full overflow-hidden rounded-xl border border-border bg-surface shadow-sm lg:grid-cols-[1.15fr_1fr]">
           <div className="landing-soft-gradient border-b border-border p-6 sm:p-10 lg:border-b-0 lg:border-r lg:p-12">

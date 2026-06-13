@@ -1,7 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
+
+import { useJobStatus } from "@/components/job-details/JobStatusProvider";
+import type { JobStatus } from "@/lib/utils";
 
 type Props = {
   jobId: string;
@@ -17,8 +19,12 @@ function isAvailabilityApiResponse(value: unknown): value is AvailabilityApiResp
   return typeof value === "object" && value !== null;
 }
 
+function isJobStatus(value: unknown): value is JobStatus {
+  return value === "active" || value === "unavailable" || value === "applied" || value === "archived" || value === "rejected" || value === "completed";
+}
+
 export function CheckAvailabilityButton({ jobId }: Props) {
-  const router = useRouter();
+  const { setStatus } = useJobStatus();
   const [isPending, setIsPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [messageTone, setMessageTone] = useState<"success" | "error">("success");
@@ -37,12 +43,14 @@ export function CheckAvailabilityButton({ jobId }: Props) {
 
       if (parsedData.success === true) {
         setMessageTone("success");
+        if (isJobStatus(parsedData.status)) {
+          setStatus(parsedData.status);
+        }
         if (parsedData.status === "unavailable") {
           setMessage("Job listing is no longer active and has been marked unavailable.");
         } else {
           setMessage("Job listing appears to be active.");
         }
-        router.refresh();
       } else {
         setMessageTone("error");
         setMessage(

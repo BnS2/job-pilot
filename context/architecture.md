@@ -7,6 +7,7 @@
 | Framework                      | Next.js 16 (App Router)  | Full stack framework                             |
 | Auth + DB + Storage + Realtime | InsForge                 | Entire backend                                   |
 | Env management                 | Varlock                  | Schema, validation, and safe loading for `.env`  |
+| Agent job runtime              | Inngest                  | Durable background workflows for long-running agent work |
 | Web research                   | Gemini 2.5 URL Context   | Reads public company pages and retrieved URLs     |
 | Web discovery                  | Gemini 2.5 Google Search | Finds official company pages with free grounding  |
 | Job Discovery                  | Adzuna API               | Job search and discovery                         |
@@ -63,6 +64,10 @@
 │   ├── matcher.ts                         → Gemini job matching logic
 │   ├── extractor.ts                       → Gemini job description extraction + structuring
 │   └── types.ts                           → Agent-specific TypeScript types
+├── inngest/
+│   ├── client.ts                          → Inngest client instance
+│   └── functions/
+│       └── companyResearch.ts             → Company research background workflow
 ├── actions/
 │   ├── profile.ts                         → Profile save + update
 │   └── jobs.ts                            → Job status updates
@@ -98,6 +103,7 @@
 ├── lib/
 │   ├── insforge-client.ts                 → InsForge browser client instance
 │   ├── insforge-server.ts                 → InsForge server client
+│   ├── insforge-admin.ts                  → Server-only admin client for background workflows
 │   ├── gemini.ts                          → Gemini API client + structured output helpers
 │   ├── adzuna.ts                          → Adzuna API client
 │   ├── posthog-client.ts                  → PostHog browser client
@@ -115,6 +121,7 @@
 | ------------- | ------------------------------------------------------------------------------------------------------ |
 | `app/`        | Pages and API routes only. No business logic.                                                          |
 | `agent/`      | All agent logic. Adzuna discovery, company research, matching, extraction. Nothing here touches React. |
+| `inngest/`    | Durable workflow definitions only. Calls agent logic and writes durable app state through InsForge.     |
 | `actions/`    | Server Actions for UI-triggered mutations only. Profile save, profile update.                          |
 | `components/` | UI only. No data fetching logic. No direct DB calls.                                                   |
 | `lib/`        | Third party client initialisation and shared utilities only.                                           |
@@ -136,14 +143,16 @@ InsForge DB write
 Revalidate or redirect
 ```
 
-### Agent Operations (API Routes)
+### Job Discovery (API Route + Inngest)
 
 ```
 User clicks Find Jobs
         ↓
 API route in app/api/agent/find
         ↓
-Calls agent/adzuna.ts
+Validates auth/profile, creates agent_runs row, sends job-discovery.requested event
+        ↓
+Inngest function calls agent/adzuna.ts
         ↓
 Adzuna API returns job listings
         ↓
@@ -151,7 +160,7 @@ Gemini 3.5 Flash scores each job against user profile
         ↓
 Agent writes results to InsForge DB
         ↓
-Page data revalidated
+Search controls poll agent_runs status and refresh the existing list
 ```
 
 ### Company Research (API Routes)
@@ -161,7 +170,11 @@ User clicks Research Company on job details page
         ↓
 API route in app/api/agent/research
         ↓
-Calls agent/research.ts
+Validates auth/job ownership, marks jobs.company_research_status = running
+        ↓
+Sends company-research.requested event to Inngest
+        ↓
+Inngest function calls agent/research.ts
         ↓
 Gemini 2.5 Flash Google Search grounding discovers official company pages
         ↓
@@ -169,10 +182,12 @@ Gemini 2.5 Flash URL Context reads homepage + max 3 public pages
         ↓
 Gemini 3.5 Flash synthesizes dossier from retrieved content
         ↓
-Dossier saved to jobs.company_research
+Dossier and research metadata saved to jobs.company_research / jobs.company_researched_at
         ↓
 Page data revalidated
 ```
+
+Long-running agent operations use this event-driven pattern. Inngest owns durable execution, retries, step observability, and queue controls. InsForge remains the durable product database and source of truth for user-visible status.
 
 ### Job Lifecycle Updates (Server Actions + Agent Checks)
 
@@ -300,6 +315,11 @@ URL saved to profiles table
 | matched_skills     | text[]      | Skills user has that match                     |
 | missing_skills     | text[]      | Skills user lacks                              |
 | company_research   | jsonb       | Company dossier from research agent            |
+| company_research_status | text   | idle / running / completed / failed            |
+| company_research_error | text    | Human-readable failure summary for retry UI     |
+| company_research_started_at | timestamptz | When the current research attempt started; used to recover stale running states |
+| company_researched_at | timestamptz | When dossier generation completed          |
+| company_research_run_id | text   | Inngest run/event handle for observability      |
 | status             | text        | active / unavailable / archived / applied / rejected / completed |
 | status_reason      | text        | Human-readable reason for latest status change |
 | found_at           | timestamptz |                                                |
@@ -318,6 +338,15 @@ Job lifecycle rules:
 - Discovery uses `source_job_id` when available, falling back to normalized `source_url` / `external_apply_url`, to upsert existing listings for the same user instead of duplicating rows across search runs.
 - A refreshed existing listing should update `run_id`, `found_at`, `last_seen_at`, matching fields, and changed listing metadata while preserving user-owned lifecycle state unless the row was `unavailable` and the listing is now confirmed available again.
 - Normal cleanup is soft state transition, not hard delete.
+
+Company research rules:
+
+- `company_research_status` starts as `idle`.
+- Research requests set status to `running`, set `company_research_started_at`, clear `company_research_error`, and store the Inngest run handle when available.
+- Successful dossier generation sets `company_research`, `company_research_status = 'completed'`, `company_researched_at = now()`, and clears `company_research_error`.
+- Final synthesis/save failures set `company_research_status = 'failed'` and a human-readable `company_research_error`, but do not cache a partial dossier.
+- Research status polling uses the InsForge-backed status endpoint instead of full-page refreshes. A `running` research older than the stale threshold is marked failed with a retryable message.
+- Web retrieval failures alone do not fail research. Synthesis still runs from job + profile data and may complete with thin or empty sources.
 
 ### `agent_logs`
 
@@ -410,7 +439,7 @@ export const GEMINI_FAST_MODEL = "gemini-3.1-flash-lite";
 
 Use `gemini-3.5-flash` by default for matching, extraction, resume generation, and dossier synthesis because it is the newer free-tier text model. Use `gemini-2.5-flash` only for the company web research call because Google Search grounding is free on 2.5 Flash up to the documented daily limit. Use `gemini-3.1-flash-lite` only for low-risk high-volume text calls if rate limits become tight.
 
-Resume extraction retries transient Gemini failures before falling back from `GEMINI_TEXT_MODEL` to `GEMINI_FAST_MODEL`. Temporary provider failures return a temporary-service response to the client instead of being treated as invalid resume content.
+Resume extraction, resume generation, job matching, and company research synthesis retry transient Gemini failures before falling back from `GEMINI_TEXT_MODEL` to `GEMINI_FAST_MODEL`. Temporary provider failures return retryable user-facing errors instead of being treated as invalid content.
 
 ## Resume Text Extraction Pattern
 
@@ -534,10 +563,13 @@ Rules the AI agent must never violate:
 - API routes contain no UI logic. Components contain no DB logic.
 - Agent code in `/agent` never imports from `/components` or `/actions`.
 - Server Actions never call agent functions. Agent functions are only called from API routes.
-- All InsForge server-side writes use `createInsforgeServer()` — never the browser client.
+- Authenticated request/response writes use `createInsforgeServer()` — never the browser client.
+- Background workflows that do not have request cookies use `createInsforgeAdmin()` and must explicitly filter every query/update by `user_id`.
 - No hardcoded hex values or raw Tailwind color classes in components — use CSS variables from ui-tokens.md.
 - Gemini web research failures are caught and logged to agent_logs, never thrown to crash the run.
 - Company research always returns a dossier — even if web research fails, Gemini 3.5 Flash synthesizes from company name, job description, and profile alone. Never return empty.
+- Company research runs as an Inngest background workflow. Route handlers may enqueue work, but must not perform the long-running Gemini workflow inline.
+- Job discovery runs as an Inngest background workflow. Route handlers may validate input, create an `agent_runs` row, enqueue work, and expose run status, but must not perform the long-running Adzuna/Gemini workflow inline.
 - Do not add Browserbase, Stagehand, Playwright, or Puppeteer for Phase 1 company research. Only add a browser worker after the Browser-Agent Escape Hatch criteria are met.
 - Always scope InsForge queries to the current user_id — never query without a user filter.
 - Adzuna API always includes category=it-jobs — never search without this filter.

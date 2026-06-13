@@ -1,46 +1,31 @@
+"use client";
+
 import Link from "next/link";
 
 import { CheckAvailabilityButton } from "@/components/find-jobs/CheckAvailabilityButton";
-import { StatusButtonClient } from "@/components/find-jobs/StatusButtonClient";
+import { useJobStatus } from "@/components/job-details/JobStatusProvider";
+import { StatusDropdown } from "@/components/job-details/StatusDropdown";
 import type { JobStatus } from "@/lib/utils";
+
+function shouldShowAvailability(status: JobStatus): boolean {
+  return status === "active" || status === "unavailable";
+}
 
 type Props = {
   applyUrl: string | null;
   company: string;
   jobId: string;
-  status: JobStatus;
 };
 
-export function JobActions({ applyUrl, company, jobId, status }: Props) {
+export function JobActions({ applyUrl, company, jobId }: Props) {
+  const { status } = useJobStatus();
   return (
     <>
       <section className="flex flex-wrap justify-center gap-3">
-        {status !== "applied" ? (
-          <StatusButtonClient jobId={jobId} status="applied">
-            Mark Applied
-          </StatusButtonClient>
+        <StatusDropdown jobId={jobId} status={status} />
+        {shouldShowAvailability(status) ? (
+          <CheckAvailabilityButton jobId={jobId} />
         ) : null}
-        {status !== "archived" ? (
-          <StatusButtonClient jobId={jobId} status="archived">
-            Archive
-          </StatusButtonClient>
-        ) : null}
-        {status !== "rejected" ? (
-          <StatusButtonClient jobId={jobId} status="rejected">
-            Mark Rejected
-          </StatusButtonClient>
-        ) : null}
-        {status !== "completed" ? (
-          <StatusButtonClient jobId={jobId} status="completed">
-            Mark Completed
-          </StatusButtonClient>
-        ) : null}
-        {status !== "active" ? (
-          <StatusButtonClient jobId={jobId} status="active">
-            Restore Active
-          </StatusButtonClient>
-        ) : null}
-        <CheckAvailabilityButton jobId={jobId} />
       </section>
 
       {applyUrl ? (

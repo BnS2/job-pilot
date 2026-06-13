@@ -1,7 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 
 import { AuthSessionGuard } from "@/components/auth/AuthSessionGuard";
-import { AvailabilityAutoCheck } from "@/components/job-details/AvailabilityAutoCheck";
 import { BackToJobsLink } from "@/components/job-details/BackToJobsLink";
 import { CompanyResearchCard } from "@/components/job-details/CompanyResearchCard";
 import { JobActions } from "@/components/job-details/JobActions";
@@ -9,6 +8,7 @@ import { JobDescriptionCard } from "@/components/job-details/JobDescriptionCard"
 import { JobDetailsError } from "@/components/job-details/JobDetailsError";
 import { JobHeader } from "@/components/job-details/JobHeader";
 import { JobInfoGrid } from "@/components/job-details/JobInfoGrid";
+import { JobStatusProvider } from "@/components/job-details/JobStatusProvider";
 import {
   getApplyUrl,
   getSafeMatchScore,
@@ -18,6 +18,7 @@ import {
 import { MatchReasoningCard } from "@/components/job-details/MatchReasoningCard";
 import { SkillsComparisonCard } from "@/components/job-details/SkillsComparisonCard";
 import { Navbar } from "@/components/layout/Navbar";
+import { companyResearchSchema } from "@/lib/company-research";
 import { createInsforgeServer } from "@/lib/insforge-server";
 
 type JobDetailsPageProps = {
@@ -48,7 +49,7 @@ export default async function JobDetailsPage({ params }: JobDetailsPageProps) {
   const { data: job, error } = await insforge.database
     .from("jobs")
     .select(
-      "id,company,title,location,salary,job_type,external_apply_url,source_url,about_role,match_score,match_reason,matched_skills,missing_skills,found_at,status",
+      "id,company,title,location,salary,job_type,external_apply_url,source_url,about_role,match_score,match_reason,matched_skills,missing_skills,found_at,status,company_research,company_research_status,company_research_error",
     )
     .eq("id", id)
     .eq("user_id", userId)
@@ -100,40 +101,55 @@ export default async function JobDetailsPage({ params }: JobDetailsPageProps) {
   const applyUrl = getApplyUrl(details);
   const matchedSkills = details.matched_skills ?? [];
   const missingSkills = details.missing_skills ?? [];
+  const companyResearch = companyResearchSchema.safeParse(job.company_research);
+  const researchStatus =
+    job.company_research_status === "running" ||
+    job.company_research_status === "completed" ||
+    job.company_research_status === "failed" ||
+    job.company_research_status === "idle"
+      ? job.company_research_status
+      : "idle";
+  const researchError =
+    typeof job.company_research_error === "string" ? job.company_research_error : null;
 
   return (
     <div className="min-h-screen bg-background">
       <AuthSessionGuard />
-      <AvailabilityAutoCheck currentStatus={status} jobId={details.id} />
       <Navbar activePath="/find-jobs" fullWidth showCta={false} />
       <main className="mx-auto flex max-w-[840px] flex-col gap-6 px-4 py-10 sm:px-6">
         <BackToJobsLink />
-        <JobHeader
-          applyUrl={applyUrl}
-          company={company}
-          matchScore={matchScore}
-          status={status}
-          title={title}
-        />
-        <JobInfoGrid
-          foundAt={details.found_at}
-          jobType={details.job_type}
-          location={details.location}
-          salary={details.salary}
-        />
-        <MatchReasoningCard matchReason={details.match_reason} />
-        <SkillsComparisonCard
-          matchedSkills={matchedSkills}
-          missingSkills={missingSkills}
-        />
-        <JobDescriptionCard aboutRole={details.about_role} />
-        <CompanyResearchCard company={company} />
-        <JobActions
-          applyUrl={applyUrl}
-          company={company}
-          jobId={details.id}
-          status={status}
-        />
+        <JobStatusProvider initialStatus={status}>
+          <JobHeader
+            applyUrl={applyUrl}
+            company={company}
+            matchScore={matchScore}
+            title={title}
+          />
+          <JobInfoGrid
+            foundAt={details.found_at}
+            jobType={details.job_type}
+            location={details.location}
+            salary={details.salary}
+          />
+          <MatchReasoningCard matchReason={details.match_reason} />
+          <SkillsComparisonCard
+            matchedSkills={matchedSkills}
+            missingSkills={missingSkills}
+          />
+          <JobDescriptionCard aboutRole={details.about_role} />
+          <CompanyResearchCard
+            company={company}
+            dossier={companyResearch.success ? companyResearch.data : null}
+            error={researchError}
+            jobId={details.id}
+            status={researchStatus}
+          />
+          <JobActions
+            applyUrl={applyUrl}
+            company={company}
+            jobId={details.id}
+          />
+        </JobStatusProvider>
       </main>
     </div>
   );

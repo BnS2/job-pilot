@@ -1,4 +1,4 @@
-import { createInsforgeServer } from "@/lib/insforge-server";
+import { createInsforgeAdmin } from "@/lib/insforge-admin";
 
 type AgentRunStatus = "running" | "completed" | "failed";
 type AgentLogLevel = "info" | "success" | "warning" | "error";
@@ -19,9 +19,10 @@ export async function startJobDiscoveryRun(
   userId: string,
   jobTitle: string,
   location: string | null,
+  searchMode: "manual_search" | "profile_best_match" = "manual_search",
 ): Promise<string | null> {
   try {
-    const insforge = await createInsforgeServer();
+    const insforge = createInsforgeAdmin();
     const { data, error } = await insforge.database
       .from("agent_runs")
       .insert([{
@@ -30,6 +31,7 @@ export async function startJobDiscoveryRun(
         job_title_searched: jobTitle,
         location_searched: location,
         jobs_found: 0,
+        search_mode: searchMode,
       }])
       .select("id")
       .single();
@@ -48,7 +50,7 @@ export async function startJobDiscoveryRun(
 
 async function startProfileAgentRun(userId: string, runType: string): Promise<string | null> {
   try {
-    const insforge = await createInsforgeServer();
+    const insforge = createInsforgeAdmin();
     const { data, error } = await insforge.database
       .from("agent_runs")
       .insert([{
@@ -84,7 +86,7 @@ export async function finishAgentRun(
   }
 
   try {
-    const insforge = await createInsforgeServer();
+    const insforge = createInsforgeAdmin();
     const { error } = await insforge.database
       .from("agent_runs")
       .update({
@@ -116,7 +118,7 @@ export async function logAgentMessage(
   }
 
   try {
-    const insforge = await createInsforgeServer();
+    const insforge = createInsforgeAdmin();
     const { error } = await insforge.database
       .from("agent_logs")
       .insert([{
