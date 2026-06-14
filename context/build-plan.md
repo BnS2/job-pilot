@@ -93,10 +93,10 @@ All InsForge tables and storage bucket created before any data is written.
 - Create `profiles` table with all columns from architecture.md
 - Create `agent_runs` table
 - Create `jobs` table with all columns including:
-  - tailored fields
   - company_research jsonb column
   - source values: 'search' | 'url'
   - lifecycle fields: status, status_reason, source_job_id, last_seen_at, availability_checked_at, unavailable_at, archived_at, applied_at, completed_at
+  - tailored resume metadata is added later in Feature 20, not in the initial schema
 - Create `agent_logs` table
 - Create `resumes` storage bucket with authenticated access only
 - Row level security policies on all four tables — always filter by user_id
@@ -321,6 +321,62 @@ Make saved jobs behave like an active opportunity pipeline rather than an endles
 - Total historical jobs may still exist as a secondary metric, but should not replace active opportunity counts.
 
 **PostHog events:** `job_status_changed`, `job_unavailable_detected`
+
+---
+
+### Find Jobs Discovery Enhancement — Profile Best Match Button
+
+Add a profile-driven search shortcut to the Find Jobs page.
+
+**Logic:**
+
+- Best Match derives search queries from the user's saved profile instead of requiring a manual job title.
+- Use the user's current role, target roles, skills, and experience to create a focused search query.
+- Keep the workflow on the existing Inngest-backed job discovery path so run notices, polling, lifecycle upserts, and saved-job handling stay shared with manual search.
+- Limit the run to at most one Gemini query-planning call, two Adzuna searches, and ten Gemini scoring calls.
+- Store `search_mode` on `agent_runs` so manual searches and profile-based discovery can be distinguished in dashboard activity and analytics.
+
+**UI:**
+
+- Add a secondary Best Match button to the Find Jobs search card.
+- Reuse the existing tracked-run notices, completed-run filters, and active list refresh behavior.
+- If the user's profile is too incomplete to generate a useful query, show a human-readable prompt to complete the profile.
+
+---
+
+### 19 URL Job Import
+
+Import a public job URL into the user's saved jobs without treating it as an Adzuna search.
+
+**Schema / migration:**
+
+- Keep `jobs.source` as the broad category: `search` or `url`
+- Add `jobs.source_provider text` for provider identity:
+  - Adzuna rows use `source_provider = 'adzuna'`
+  - Imported URL rows derive provider from hostname, such as `jobstreet`, `linkedin`, `indeed`, or `unknown`
+- Add `job_url_import` to the allowed `agent_runs.run_type` values
+- Backfill existing search rows to `source_provider = 'adzuna'`
+
+**Logic:**
+
+- Add `POST /api/agent/import-url` and status polling on the same route
+- Create `agent_runs` rows with `run_type = 'job_url_import'`
+- Send Inngest event `job-url-import.requested`
+- Validate only absolute `http` / `https` URLs
+- Block local/internal/private IPs, unsafe hostnames, unsafe redirects, non-text/HTML responses, oversized responses, and timeouts
+- Extract job details best-effort from fetched page text with Gemini structured output
+- Fail clearly if the page is unreachable, unsupported, unsafe, too large, or not confidently one job posting
+- Score imported jobs with the same profile-matching standard as Adzuna jobs
+- Save imported jobs as `source = 'url'`, deduped by normalized URL fingerprint for the same user
+
+**UI:**
+
+- Add a separate Job URL control to the Find Jobs search card
+- Keep Adzuna search and Best Match controls separate from URL import
+- Status copy must distinguish the workflow:
+  - Adzuna search: "Searching on Adzuna..."
+  - URL import: "Importing job from JobStreet..." or "Importing job URL..."
+- Find Jobs source badges show provider labels such as `Adzuna`, `JobStreet`, `LinkedIn`, or `URL`
 
 ---
 
@@ -551,7 +607,7 @@ Build the complete dashboard UI with mock data.
 
 - Four stat cards: Active Jobs Found, Avg. Match Rate, Companies Researched, Jobs This Week — all showing mock numbers with trend indicators
 - Recent Activity card — list of 5 activity entries with colored dots and timestamps
-- Resume Tailoring Activity — bar chart (mock data, days of week)
+- Company Research Activity — bar chart (mock data, days of week)
 - Jobs Found Over Time — line chart (mock data, days of week)
 - Match Score Distribution — bar chart (mock data, score ranges 50-60%, 60-70%, 70-80%, 80-90%, 90-100%)
 - Incomplete profile banner at top if profile not complete
@@ -590,28 +646,93 @@ Wire recent activity list to real InsForge DB data for current user.
 
 ---
 
-### 18 Analytics Charts — PostHog Data
+### 18 Analytics Charts — DB Data
 
-Wire three dashboard charts to real PostHog event data for current user.
+Wire three dashboard charts to real InsForge data for current user. PostHog remains for event capture, but dashboard rendering must not depend on PostHog query credentials.
 
 **Logic:**
 
-- Jobs Found Over Time — query PostHog for job_found events where distinctId = current userId, last 30 days, group by day
-- Match Score Distribution — query PostHog for job_found events, extract matchScore property, group into ranges: 50-60, 60-70, 70-80, 80-90, 90-100
-- Company Research Activity — query PostHog for company_researched events where distinctId = current userId, last 7 days, group by day
-- Lifecycle Activity — query PostHog for job_status_changed / job_unavailable_detected when adding pipeline health views
-- All three charts rendered with recharts
-- Empty state shown for each chart when no data exists yet
+- Jobs Found Over Time — derive from completed job discovery runs and their `jobs_found` counts over the last 30 days
+- Match Score Distribution — derive from saved `jobs.match_score`, grouped into ranges: 0-60, 60-70, 70-80, 80-90, 90-100
+- Company Research Activity — derive from `jobs.company_researched_at` over the last 7 days
+- Empty state shown for each chart only when the DB truly has no relevant rows/values
+
+---
+
+## Phase 6 — Job-Specific Application Materials
+
+### 20 Tailored Resume for Job or Company
+
+Generate a private resume PDF tailored to a specific saved job and company. This builds on the existing base resume generation flow but stores the output as a job-scoped artifact instead of replacing the user's canonical profile resume.
+
+**Schema / migration:**
+
+- Add tailored resume metadata to `jobs`, or create a dedicated `job_resumes` table if version history is desired:
+  - `tailored_resume_url text`
+  - `tailored_resume_key text`
+  - `tailored_resume_status text default 'idle'`
+  - `tailored_resume_error text`
+  - `tailored_resume_notes jsonb`
+  - `tailored_resume_generated_at timestamptz`
+  - `tailored_resume_run_id text`
+- Add allowed status constraint: `idle`, `running`, `completed`, `failed`
+- Add `resume_tailoring` to the allowed `agent_runs.run_type` values
+- Add indexes for current-user job details polling, such as `jobs(user_id, tailored_resume_status)`
+
+**Logic:**
+
+- POST `/api/resume/tailor` receives `jobId`
+- Authenticate the current user and verify the job belongs to that user
+- Validate that the user has enough saved profile/resume data to generate a resume
+- Create an `agent_runs` row with `run_type = 'resume_tailoring'`
+- If tailoring is already running for the job, return the current running state instead of enqueueing duplicate work
+- Send `resume-tailoring.requested` to Inngest and return immediately
+- Inngest loads:
+  - Current saved profile data
+  - Base resume metadata/content when available
+  - Job title, company, job description, requirements, match reason, matched skills, missing skills
+  - Company research dossier when available
+- Gemini 3.5 Flash generates role/company-specific resume content:
+  - Summary tailored to the company and role
+  - Experience bullets emphasizing relevant existing evidence
+  - Skills ordering that mirrors the role's requirements honestly
+  - Gap-aware framing that does not invent qualifications
+- Validate structured resume output before rendering
+- Render PDF with `@react-pdf/renderer`
+- Upload the tailored PDF to private InsForge Storage using a job-scoped key such as `resumes/{user_id}/jobs/{job_id}/tailored-resume.pdf`
+- Persist returned `url` and `key` on the job/job-resume record before deleting any previous tailored PDF
+- Save concise `tailored_resume_notes` describing what was emphasized
+- Capture `resume_tailored` PostHog event
+
+**UI:**
+
+- Add a Tailored Resume card or section on `/find-jobs/[id]`
+- Empty state: Tailor Resume button
+- Running state: disabled button, staged progress copy, polling via run/job status
+- Completed state: private preview/download link, generated timestamp, short tailoring notes, Regenerate button
+- Failed state: human-readable retry message and Retry button
+- Do not overwrite or visually replace the base resume on `/profile`
+
+**Guardrails:**
+
+- Tailoring must never invent work experience, tools, degrees, employers, certifications, dates, or metrics
+- Tailoring must not mutate `profiles` or overwrite `profiles.resume_pdf_url` / `profiles.resume_pdf_key`
+- Tailoring must not automatically recalculate `jobs.match_score`; rescore after tailoring remains a separate future feature
+- Tailoring should use company research if it exists, but it must work from job posting + profile data when research is absent
+- Auto-apply remains out of scope; the user still chooses when and where to submit
+
+**PostHog event:** `resume_tailored` — { userId, jobId, company }
 
 ---
 
 ## Feature Count
 
-| Phase                 | Features |
-| --------------------- | -------- |
-| Phase 1 — Foundation  | 4        |
-| Phase 2 — Profile     | 4        |
-| Phase 3 — Find Jobs   | 4        |
-| Phase 4 — Job Details | 2        |
-| Phase 5 — Dashboard   | 4        |
-| **Total**             | **18**   |
+| Phase                            | Features |
+| -------------------------------- | -------- |
+| Phase 1 — Foundation             | 4        |
+| Phase 2 — Profile                | 4        |
+| Phase 3 — Find Jobs              | 5        |
+| Phase 4 — Job Details            | 2        |
+| Phase 5 — Dashboard              | 4        |
+| Phase 6 — Application Materials  | 1        |
+| **Total**                        | **20**   |

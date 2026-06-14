@@ -57,12 +57,14 @@
 │       │   └── research/route.ts          → Trigger company research agent
 │       ├── resume/
 │       │   ├── generate/route.ts          → Generate base resume PDF from profile
-│       │   └── extract/route.ts           → Extract profile data from uploaded resume PDF
+│       │   ├── extract/route.ts           → Extract profile data from uploaded resume PDF
+│       │   └── tailor/route.ts            → Trigger job-specific tailored resume generation
 ├── agent/
 │   ├── adzuna.ts                          → Adzuna API job discovery + Gemini scoring
 │   ├── research.ts                        → Company research — Gemini Search + URL Context + synthesis
 │   ├── matcher.ts                         → Gemini job matching logic
 │   ├── extractor.ts                       → Gemini job description extraction + structuring
+│   ├── resumeTailor.ts                    → Job/company-specific resume tailoring logic
 │   └── types.ts                           → Agent-specific TypeScript types
 ├── inngest/
 │   ├── client.ts                          → Inngest client instance
@@ -70,7 +72,8 @@
 │       ├── companyResearch.ts             → Company research background workflow
 │       ├── jobDiscovery.ts                → Job discovery background workflow
 │       ├── resumeExtraction.ts            → Resume extraction background workflow
-│       └── resumeGeneration.ts            → Resume generation background workflow
+│       ├── resumeGeneration.ts            → Resume generation background workflow
+│       └── resumeTailoring.ts             → Job-specific resume tailoring background workflow
 ├── actions/
 │   ├── profile.ts                         → Profile save + update
 │   └── jobs.ts                            → Job status updates
@@ -260,6 +263,32 @@ Resume metadata is saved to agent_runs.result
 Profile UI polls /api/resume/runs and updates the active resume card
 ```
 
+### Job-Specific Resume Tailoring (API Route + Inngest)
+
+```text
+User clicks Tailor Resume on /find-jobs/[id]
+        ↓
+API route in app/api/resume/tailor
+        ↓
+Validates auth/job ownership and creates a typed agent_runs row
+        ↓
+Sends resume-tailoring.requested to Inngest
+        ↓
+Inngest loads the saved profile, base resume metadata, job posting, match fields, and company research dossier when available
+        ↓
+Gemini 3.5 Flash generates tailored resume content for that specific job/company
+        ↓
+@react-pdf/renderer renders a private PDF buffer
+        ↓
+Tailored PDF uploaded to InsForge Storage under a job-scoped key
+        ↓
+Tailored resume metadata saved against the job, not profiles
+        ↓
+Job Details polls run status and displays preview/download/regenerate controls
+```
+
+Tailoring never mutates the user's canonical profile or base resume fields. It creates a job-specific artifact that can be regenerated for the same opportunity. The original match score remains the score against the user's canonical profile and is not recalculated automatically after tailoring.
+
 ---
 
 ## InsForge Database Schema
@@ -301,7 +330,7 @@ Profile UI polls /api/resume/runs and updates the active resume card
 | id                 | uuid        |                              |
 | user_id            | uuid        | References profiles          |
 | status             | text        | running / completed / failed |
-| run_type           | text        | job_discovery / company_research / availability_check / resume_extraction / resume_generation |
+| run_type           | text        | job_discovery / company_research / availability_check / resume_extraction / resume_generation / job_url_import |
 | job_title_searched | text        |                              |
 | location_searched  | text        |                              |
 | jobs_found         | integer     | Total jobs discovered        |
@@ -315,9 +344,10 @@ Profile UI polls /api/resume/runs and updates the active resume card
 | Column             | Type        | Notes                                          |
 | ------------------ | ----------- | ---------------------------------------------- |
 | id                 | uuid        |                                                |
-| run_id             | uuid        | References agent_runs — null if from URL input |
+| run_id             | uuid        | References agent_runs                          |
 | user_id            | uuid        | References profiles                            |
 | source             | text        | search / url                                   |
+| source_provider    | text        | Provider identity such as adzuna, jobstreet, linkedin, unknown |
 | source_job_id      | text        | Stable provider listing ID when available      |
 | source_url         | text        | Original job listing URL                       |
 | external_apply_url | text        | Direct company apply URL                       |
@@ -342,6 +372,13 @@ Profile UI polls /api/resume/runs and updates the active resume card
 | company_research_started_at | timestamptz | When the current research attempt started; used to recover stale running states |
 | company_researched_at | timestamptz | When dossier generation completed          |
 | company_research_run_id | text   | Inngest run/event handle for observability      |
+| tailored_resume_url | text       | Private Storage URL for the latest tailored resume PDF for this job |
+| tailored_resume_key | text       | Private Storage key/path for the latest tailored resume PDF for this job |
+| tailored_resume_status | text    | idle / running / completed / failed             |
+| tailored_resume_error | text     | Human-readable failure summary for retry UI      |
+| tailored_resume_notes | jsonb    | Short structured notes explaining what was tailored |
+| tailored_resume_generated_at | timestamptz | When the latest tailored PDF was generated |
+| tailored_resume_run_id | text    | Inngest run/event handle for observability       |
 | status             | text        | active / unavailable / archived / applied / rejected / completed |
 | status_reason      | text        | Human-readable reason for latest status change |
 | found_at           | timestamptz |                                                |
@@ -369,6 +406,15 @@ Company research rules:
 - Final synthesis/save failures set `company_research_status = 'failed'` and a human-readable `company_research_error`, but do not cache a partial dossier.
 - Research status polling uses the InsForge-backed status endpoint instead of full-page refreshes. A `running` research older than the stale threshold is marked failed with a retryable message.
 - Web retrieval failures alone do not fail research. Synthesis still runs from job + profile data and may complete with thin or empty sources.
+
+Tailored resume rules:
+
+- Tailored resumes are job-scoped artifacts, not replacements for `profiles.resume_pdf_url` or `profiles.resume_pdf_key`.
+- Tailoring should use company research when available, but it must still work from job posting + profile data when research has not been run.
+- Generated bullets must emphasize truthful, existing candidate evidence. Never invent employers, projects, tools, degrees, dates, certifications, or metrics.
+- A tailored resume can be regenerated for the same job. Upload the new PDF first, persist the new metadata, then remove the previous tailored object only after the replacement is active.
+- Tailoring status uses `idle`, `running`, `completed`, and `failed`, mirroring company research and resume generation status patterns.
+- Tailoring does not change `profiles`, `jobs.match_score`, or `jobs.match_reason` unless a future explicit rescore feature is added.
 
 ### `agent_logs`
 

@@ -418,26 +418,25 @@ Last updated: 2026-06-14
 **Pattern notes:**
 The profile page shell is a protected server-rendered app page that composes Navbar and ProfileClient. ProfileClient lays out the editable ProfileForm as the main column and places CompletionIndicator plus ResumeUpload in a right rail at `xl` widths. On smaller screens, the status/resume rail appears above the form. This keeps the page aligned to the full protected app canvas while preventing resume/status controls and form sections from feeling stretched across the whole viewport. The page fetches profile data from the InsForge DB, computes completion metrics dynamically, and passes properties down.
 
-### Dashboard Auth Checkpoint
+### Dashboard Page
 
-File: `app/dashboard/page.tsx`
-Last updated: 2026-06-12
+File: `app/dashboard/page.tsx`, `components/dashboard/*`
+Last updated: 2026-06-15
 
 | Property         | Class                                                                                     |
 | ---------------- | ----------------------------------------------------------------------------------------- |
-| Background       | `bg-background`, `bg-surface`                                                             |
-| Border           | `border border-border`                                                                    |
-| Border radius    | `rounded-xl`                                                                              |
-| Text — primary   | `text-text-primary`                                                                       |
-| Text — secondary | `text-text-secondary`                                                                     |
-| Spacing          | `px-4 py-12 sm:px-6`, `gap-6`, `gap-4`, `p-6`, `mt-3`, grid `md:grid-cols-3`             |
+| Background       | page `bg-background`, cards `bg-surface`                                                  |
+| Border           | `border border-border`, recent activity header `border-b border-border`, incomplete banner `border-warning/20` |
+| Border radius    | `rounded-xl` for cards, `rounded-sm` for stat trend badges, `rounded-full` for activity dots |
+| Text — primary   | `text-text-primary`, stat numbers `text-[30px] font-semibold leading-9`                   |
+| Text — secondary | `text-text-secondary`, `text-text-muted` for helper text, chart axes, and timestamps       |
+| Spacing          | page `max-w-[1440px] gap-6 px-4 py-8 sm:px-6 lg:px-8`, dashboard body `grid items-start gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.75fr)]`, cards `p-6`, stat grid `gap-6`, chart title-to-canvas `mt-5`, chart canvases `h-[260px]` / `h-[250px]`, activity list `px-6 py-7 space-y-8` |
 | Hover state      | none                                                                                      |
 | Shadow           | `shadow-sm`                                                                               |
-| Accent usage     | `text-accent` status eyebrow                                                              |
+| Accent usage     | activity dots `bg-accent-light before:bg-accent`, charts `stroke-accent`, `fill-info`, `fill-success`, incomplete CTA `bg-accent text-accent-foreground` |
 
 **Pattern notes:**
-This is a temporary protected checkpoint for testing the auth redirect and logout flow before the full Phase 5 dashboard UI. It uses sibling section cards only and avoids dashboard analytics patterns that belong to the later feature.
-The page now also sends the `dashboard_checkpoint_viewed` PostHog event server-side after confirming the authenticated user; this does not change the visual pattern. Dashboard uses the authenticated-app navbar treatment with active `/dashboard` state and no "Start for free" CTA.
+Feature 15 replaces the temporary dashboard checkpoint with the full mock dashboard from `context/designs/dashboard.png`. Feature 16 wires the stat cards to real InsForge jobs data while keeping the route as a protected Server Component. Feature 17 wires Recent Activity to real completed agent runs plus job research/lifecycle timestamps, with the same timeline dot treatment and a minimal empty state. Feature 18 wires the SVG charts to DB-first InsForge data: completed job discovery runs for jobs-found trend, saved `jobs.match_score` for distribution, and `jobs.company_researched_at` for research activity. Empty chart states now mean the DB has no relevant rows or values. The dashboard now reads profile completeness for the banner, job rows for stats/activity/charts, and separate agent-run queries for recent activity vs job-discovery chart data while PostHog remains event capture only. The dashboard body uses independent wide-screen columns: primary Jobs Found trend and Recent Activity in the left column, compact Company Research and Match Distribution cards in the right column. Dashboard charts are Client Components with hover and keyboard-focus tooltips using token-styled `bg-surface`, `border-border`, `text-text-*`, and `shadow-sm` treatment. Chart tooltip wrappers keep overflow visible and flip tooltips below top-edge values so active labels are not clipped. Chart headers include compact token summary pills so each card is informative before interaction. Chart cards use compact internal spacing: `mt-5` between heading and plot, with 260px trend/distribution plots and a 250px research plot to avoid large unused card areas. Dashboard cards use the same white surface, token border, 16px radius, 24px padding, and shadow treatment as the rest of the app.
 
 ### Find Jobs Page Shell
 
@@ -462,7 +461,7 @@ The Find Jobs page is a protected Server Component that verifies the current Ins
 ### Find Jobs Search Controls
 
 File: `components/find-jobs/SearchControls.tsx`
-Last updated: 2026-06-13
+Last updated: 2026-06-15
 
 | Property         | Class                                                                 |
 | ---------------- | --------------------------------------------------------------------- |
@@ -471,13 +470,13 @@ Last updated: 2026-06-13
 | Border radius    | `rounded-xl` for card, `rounded-md` for inputs/button/banner          |
 | Text — primary   | `text-text-primary`, `text-text-dark`, `text-success-foreground`, `text-info-foreground`, `text-error` |
 | Text — secondary | `text-text-muted`, `placeholder:text-text-muted`                      |
-| Spacing          | `p-6`, `grid gap-4 lg:grid-cols-[1fr_1fr_auto_auto]`, inputs `h-12 px-4`, button `h-12 px-6`, banner `mt-5 px-4 py-4 gap-3` |
+| Spacing          | `p-6`, search grid `grid gap-4 lg:grid-cols-[1fr_1fr_auto_auto]`, URL row `mt-5 grid gap-4 border-t border-border pt-5 lg:grid-cols-[1fr_auto]`, inputs `h-12 px-4`, button `h-12 px-6`, banner `mt-5 px-4 py-4 gap-3` |
 | Hover state      | `hover:bg-accent-dark` for primary CTA/add action, `hover:bg-surface-secondary` for secondary notice buttons |
 | Shadow           | `shadow-sm`                                                           |
 | Accent usage     | `bg-accent text-accent-foreground`, `text-success` success icon, `text-info` empty icon, `text-error` error icon |
 
 **Pattern notes:**
-Search controls match the supplied `find-jobs.png` card: uppercase compact labels, large rounded inputs, search icon in the job title input, and conditional status banners below the controls. Feature 10 converts this to a Client Component with controlled inputs, submit loading state, `POST /api/agent/find` wiring, a token-green success banner from the API response, a token-blue empty-result banner for zero Adzuna results, and a token-red human-readable error banner. Background search runs use per-term status rows below the controls while the existing results remain visible; optional locations are displayed as quoted values to match quoted search terms. Run rows persist in browser storage for the `/find-jobs` experience so active searches can resume polling when the user returns. Completed rows use green only when strong matches exist; weak/no-match completions stay blue and can be dismissed with a compact icon button. Completed rows are history/status rows, not active filter indicators: they expose `View results` to replace selected `run` params and dismiss that notice. Clicking the notice text toggles the run into/out of the active URL filter set (appends on add, removes on toggle-off); when a run is in the active filters, its notice gains a `border-l-2 border-l-accent` left-border indicator. Plain dismissal hides the notice and also removes the run from active filters if it was selected through the URL. Background run-status polling must never call the logout route or clear cookies; transient auth/backend failures keep the run active and retry. Feature 19 adds a secondary Best Match button beside Find Jobs, styled as `bg-surface border border-border text-text-primary rounded-md` with a sparkle icon. Best Match skips the manual job title and derives search queries from the user's saved profile. Both buttons disable together while a request is in flight.
+Search controls match the supplied `find-jobs.png` card: uppercase compact labels, large rounded inputs, search icon in the job title input, and conditional status banners below the controls. Feature 10 converts this to a Client Component with controlled inputs, submit loading state, `POST /api/agent/find` wiring, a token-green success banner from the API response, a token-blue empty-result banner for zero Adzuna results, and a token-red human-readable error banner. Background search runs use per-term status rows below the controls while the existing results remain visible; optional locations are displayed as quoted values to match quoted search terms. Run rows persist in browser storage for the `/find-jobs` experience so active searches can resume polling when the user returns. Completed rows use green only when strong matches exist; weak/no-match completions stay blue and can be dismissed with a compact icon button. Completed rows are history/status rows, not active filter indicators: they expose `View results` to replace selected `run` params and dismiss that notice. Clicking the notice text toggles the run into/out of the active URL filter set (appends on add, removes on toggle-off); when a run is in the active filters, its notice gains a `border-l-2 border-l-accent` left-border indicator. Plain dismissal hides the notice and also removes the run from active filters if it was selected through the URL. Background run-status polling must never call the logout route or clear cookies; transient auth/backend failures keep the run active and retry. Best Match is a Find Jobs enhancement beside Find Jobs, styled as `bg-surface border border-border text-text-primary rounded-md` with a sparkle icon. Best Match skips the manual job title and derives search queries from the user's saved profile. Feature 19 adds a separate Job URL row with link icon, `type="url"` input, Import URL button, `/api/agent/import-url` polling, and provider-aware copy such as `Importing job from JobStreet`. URL import notices refresh results after completion but do not become search-run filters.
 
 ### Find Jobs Filter Toolbar
 
@@ -502,7 +501,7 @@ The toolbar handles filtering the retrieved jobs list through URL parameters bac
 ### Find Jobs Table
 
 File: `components/find-jobs/JobsTable.tsx`
-Last updated: 2026-06-14
+Last updated: 2026-06-15
 
 | Property         | Class                                                                 |
 | ---------------- | --------------------------------------------------------------------- |
@@ -517,7 +516,7 @@ Last updated: 2026-06-14
 | Accent usage     | shared score meter thresholds; source badges `bg-info-lightest text-info-foreground` and `bg-surface-secondary text-text-secondary`; status badges use shared lifecycle token classes |
 
 **Pattern notes:**
-Renders real jobs queried from the database. Column parameters map `job.company` and `job.title` (as role), with user-safe fallback labels for nullable or drifted rows. Match score now uses the shared `MatchScoreMeter` so the compact table indicator shows a neutral track, actual percentage fill, `MATCH_THRESHOLD` / `MATCH_STRONG_THRESHOLD` ticks, the current score marker, and one short tone label (`Low`, `Good`, or `Strong`). The compact row must not repeat the threshold guide text because the percentage and ticks already carry that comparison. Salary falls back to "Not specified". Source maps to Search or URL badge. Status uses shared lifecycle labels/classes from `lib/utils.ts`. Date Found uses a client/server-safe relative date formatter. Supports a status-aware full empty state row when search/filtering yields zero records.
+Renders real jobs queried from the database. Column parameters map `job.company` and `job.title` (as role), with user-safe fallback labels for nullable or drifted rows. Match score now uses the shared `MatchScoreMeter` so the compact table indicator shows a neutral track, actual percentage fill, `MATCH_THRESHOLD` / `MATCH_STRONG_THRESHOLD` ticks, the current score marker, and one short tone label (`Low`, `Good`, or `Strong`). The compact row must not repeat the threshold guide text because the percentage and ticks already carry that comparison. Salary falls back to "Not specified". Source badges read provider identity from `jobs.source_provider` before falling back to broad `jobs.source`; search rows display `Adzuna`, while URL imports display host-derived labels such as `JobStreet`, `LinkedIn`, `Indeed`, or `URL`. Status uses shared lifecycle labels/classes from `lib/utils.ts`. Date Found uses a client/server-safe relative date formatter. Supports a status-aware full empty state row when search/filtering yields zero records.
 
 ### Match Score Meter
 

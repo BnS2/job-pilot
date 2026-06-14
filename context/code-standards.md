@@ -234,6 +234,7 @@ These events power the JobPilot product analytics and dashboard charts.
 | `job_unavailable_detected` | Availability check confirms a listing is closed, expired, removed, or unreachable | userId, jobId, source, reason |
 | `profile_completed`        | User saves complete profile for first time | userId                                    |
 | `company_researched`       | Company research dossier generated         | userId, jobId, company                    |
+| `resume_tailored`          | Job-specific tailored resume PDF generated | userId, jobId, company                    |
 
 ### Foundation Events
 
@@ -264,6 +265,7 @@ Do not add more events without updating this list first.
 `job_status_changed` powers lifecycle activity and applied/completed pipeline history.
 `job_unavailable_detected` powers stale-listing health and cleanup visibility.
 `company_researched` powers the Company Research Activity dashboard chart.
+`resume_tailored` powers future application-materials activity and tailored-resume analytics.
 Always fire these with correct properties.
 
 ---

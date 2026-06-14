@@ -6,9 +6,9 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ## Current Status
 
-**Phase:** Phase 4 — Job Details Page
-**Last completed:** Observable availability auto-check polish
-**Next:** 15 Dashboard Page — Full UI
+**Phase:** Phase 6 — Job-Specific Application Materials
+**Last completed:** 19 URL Job Import
+**Next:** 20 Tailored Resume for Job or Company
 **In progress:** —
 
 ---
@@ -36,19 +36,23 @@ Update this file after every completed feature. Any AI agent reading this should
 - [x] 10 Adzuna Job Discovery
 - [x] 11 Filter + Sort + Pagination
 - [x] 12 Job Lifecycle + Stale Listing Handling
+- [x] 19 URL Job Import
 
 ### Phase 4 — Job Details Page
 
 - [x] 13 Job Details Page — Full UI
 - [x] 14 Company Research Agent
-- [x] 19 Profile Best Match Button
 
 ### Phase 5 — Dashboard
 
-- [ ] 15 Dashboard Page — Full UI
-- [ ] 16 Stats Bar — Real Data
-- [ ] 17 Recent Activity — Real Data
-- [ ] 18 Analytics Charts — PostHog Data
+- [x] 15 Dashboard Page — Full UI
+- [x] 16 Stats Bar — Real Data
+- [x] 17 Recent Activity — Real Data
+- [x] 18 Analytics Charts — DB Data
+
+### Phase 6 — Job-Specific Application Materials
+
+- [ ] 20 Tailored Resume for Job or Company
 
 ---
 
@@ -63,6 +67,8 @@ Update this file after every completed feature. Any AI agent reading this should
 - 2026-06-10 — Completed PostHog initialization alignment. The wizard-added foundation events are now explicitly allowed in `code-standards.md`, and server-side PostHog captures use a short-lived client with `await shutdown()` before route return.
 - 2026-06-10 — Feature 04 schema decisions: ON DELETE CASCADE from auth.users → profiles → all child tables. Auto-create trigger on auth.users INSERT pre-fills profiles row with email and is_complete=false. RLS uses auth.uid() policies on all four tables. user_id indexes added to jobs, agent_runs, agent_logs for filtered query performance. resume_pdf_key added to profiles alongside resume_pdf_url (InsForge storage requires both url and key). InsForge MCP installed for Antigravity agent via @insforge/install + @insforge/cli link.
 - 2026-06-12 — Added job lifecycle and stale-listing handling to project scope before Job Details/Dashboard work. Saved jobs remain persistent history, but default user-facing lists should focus on active opportunities. Stale/closed listings are soft-marked `unavailable`, user outcomes use statuses like `applied`, `archived`, `rejected`, and `completed`, and new searches should upsert matching external listings instead of creating cross-run duplicates.
+- 2026-06-15 — Renumbered the Find Jobs Best Match button as a completed Find Jobs discovery enhancement rather than a standalone numbered feature. Feature 19 is now URL Job Import, and Feature 20 remains Tailored Resume for Job or Company.
+- 2026-06-15 — Moved job/company-specific resume tailoring into planned product scope as Feature 20. Tailored resumes are job-scoped private PDFs generated from profile data, the base resume, job posting, match gaps, and company research when available. They must not overwrite the user's base profile resume and must not automatically recalculate the original job match score.
 
 ---
 
@@ -109,8 +115,8 @@ Update this file after every completed feature. Any AI agent reading this should
 - 2026-06-13 — Feature 14 implementation started. Chose Inngest as the agent-job runtime for long-running workflows while keeping InsForge as the durable product database. Added code/docs for company research metadata, Inngest route/function scaffolding, the company research agent, and Job Details research UI. Applied `migrations/007_company_research_metadata.sql` to InsForge and fixed the review findings around shared schema ownership, stuck running UI state, orphaned research runs, coarse Inngest step boundaries, runtime config preflight, API-key alias drift, and the duplicate inline research path. Local Inngest dev now supports `INNGEST_DEV=1` without cloud event/signing keys, while production uses `INNGEST_EVENT_KEY` plus `INNGEST_SIGNING_KEY`. Verified with lint, TypeScript, and production build before the env-mode follow-up. `INSFORGE_API_KEY` is still required for background DB writes before manual end-to-end research testing.
 - 2026-06-13 — Feature 14 Gemini quota fallback complete. Company research synthesis now retries `GEMINI_TEXT_MODEL` and falls back to `GEMINI_FAST_MODEL` under transient/rate/quota/provider pressure, matching the existing matcher/resume reliability pattern while keeping web research on `GEMINI_RESEARCH_MODEL`.
 - 2026-06-13 — Feature 14 follow-up complete. Removed the passive Job Details availability auto-check so opening/researching a listing no longer silently moves it out of the default active list. Moved Find Jobs to an Inngest `job-discovery.requested` workflow: the API creates an `agent_runs` row, enqueues work, returns the run ID immediately, and the search controls show per-term run indicators while preserving the existing list until completed runs refresh it.
-- 2026-06-13 — Feature 19 complete. Added Profile Best Match button on the Find Jobs search card. Best Match derives search queries from the user's profile (role + skills) instead of requiring a manual job title. It uses at most 1 Gemini query-planning call, 2 Adzuna searches (10 results each), and 10 Gemini scoring calls. The secondary button reuses the existing Inngest background workflow, tracked-run notices, and job lifecycle patterns. Added `search_mode` column to `agent_runs` to distinguish manual search from profile-based discovery.
-- 2026-06-13 — Feature 19 reliability fix. `generateSearchQueryVariant` now uses `GEMINI_FAST_MODEL` as the primary model with `GEMINI_TEXT_MODEL` fallback, matching the proven matcher/research retry pattern. This preserves `gemini-3.5-flash` quota for higher-value calls and adds backoff resilience against transient 429 failures.
+- 2026-06-13 — Find Jobs Best Match enhancement complete. Added Profile Best Match button on the Find Jobs search card. Best Match derives search queries from the user's profile (role + skills) instead of requiring a manual job title. It uses at most 1 Gemini query-planning call, 2 Adzuna searches (10 results each), and 10 Gemini scoring calls. The secondary button reuses the existing Inngest background workflow, tracked-run notices, and job lifecycle patterns. Added `search_mode` column to `agent_runs` to distinguish manual search from profile-based discovery.
+- 2026-06-13 — Best Match reliability fix. `generateSearchQueryVariant` now uses `GEMINI_FAST_MODEL` as the primary model with `GEMINI_TEXT_MODEL` fallback, matching the proven matcher/research retry pattern. This preserves `gemini-3.5-flash` quota for higher-value calls and adds backoff resilience against transient 429 failures.
 - 2026-06-13 — Review fixes. Removed dead `let lastError` + unreachable `throw lastError` in `agent/research.ts` synthesis retry loop. Fixed misleading error messages in `/api/agent/find` POST handler to return `"Invalid request format."` for JSON parse and Zod validation failures instead of the job-title message.
 - 2026-06-13 — Lifecycle UX fix. Replaced the 5-6 individual lifecycle buttons on Job Details with a single contextual `StatusDropdown` component. The dropdown shows available status transitions based on the current job status, with the button label reflecting the most likely next action. `CheckAvailabilityButton` is now hidden for terminal statuses (applied, rejected, completed).
 - 2026-06-13 — Find Jobs background notice polish complete. Search run notices now quote optional locations consistently with job titles, persist in browser storage across `/find-jobs` visits, resume polling active runs when the user returns, summarize found/saved/strong-match counts accurately, and keep completed/failed notices until the user dismisses them with the close button.
@@ -149,3 +155,8 @@ Update this file after every completed feature. Any AI agent reading this should
 - 2026-06-14 — Inline resume preview foundation fix complete. Replaced the browser-native PDF iframe preview with a `ResumePreview` canvas renderer powered by installed `pdfjs-dist`, removed the `download` attribute from the active resume filename link, and added a narrow module declaration for `pdfjs-dist/webpack.mjs`. This fixes blank previews and forced downloads caused by browser PDF settings.
 - 2026-06-14 — Review fix pass complete for resume background jobs polish. Moved the React PDF resume document into `components/profile` so Inngest no longer imports from `app/api`, centralized match score thresholds with `MATCH_THRESHOLD` and `MATCH_STRONG_THRESHOLD`, made `MatchScoreMeter` keyboard-focusable, destroyed PDF.js loading tasks on preview unmount, surfaced repeated company research polling failures, logged restore-active availability check failures, replaced blind resume polling response assertions with type guards, and aligned match score docs with the implemented 70/85 thresholds.
 - 2026-06-14 — Review finding verification pass complete. Fixed still-valid threshold, research validation, queue metadata, URL filter, tooltip accessibility, async cleanup, status sync, resume polling, worker validation, shared Gemini JSON parsing, and docs/registry drift findings while skipping stale or already-addressed items.
+- 2026-06-14 — Feature 15 complete. Replaced the temporary `/dashboard` auth checkpoint with the full Phase 5 mock dashboard matching `context/designs/dashboard.png`: four stat cards, conditional incomplete-profile banner, recent activity timeline, company research bar chart, jobs-found line/area chart, and match score distribution chart. The dashboard remains a protected Server Component, uses a real profile completeness read only for the banner, and keeps all stats/activity/chart data mocked until Features 16-18 wire InsForge/PostHog data.
+- 2026-06-15 — Feature 16 complete. Dashboard stat cards now read real InsForge job data for the current user: active jobs, average active match score, researched companies, and active jobs found or refreshed in the last 7 days. Recent Activity and dashboard charts remain mocked for Features 17-18.
+- 2026-06-15 — Feature 17 complete. Dashboard Recent Activity now merges real completed agent runs with job company-research and lifecycle timestamps, sorts them newest first, formats relative times, and shows a token-styled empty state when no activity exists. Dashboard charts remain mocked until Feature 18 wires PostHog data.
+- 2026-06-15 — Feature 18 corrected. Dashboard charts are DB-first: jobs found over time comes from completed job discovery runs, match score distribution comes from saved `jobs.match_score`, and company research activity comes from `jobs.company_researched_at`. PostHog remains for event capture only, so dashboard charts no longer require PostHog query credentials.
+- 2026-06-15 — Feature 19 complete. Added guarded URL Job Import with `/api/agent/import-url`, Inngest `job-url-import.requested`, and `agent_runs.run_type = 'job_url_import'`. URL imports accept only safe public HTTP(S) pages, block local/internal/private targets and unsafe redirects, bound fetch size/time, parse job details with Gemini structured output, score against the saved profile, dedupe by normalized URL fingerprint for the user, save as `source='url'` with `source_provider`, and show provider-aware Find Jobs badges/status copy. Added `migrations/011_url_job_import.sql`.

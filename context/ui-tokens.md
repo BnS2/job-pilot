@@ -316,8 +316,8 @@ font-weight: 500
 Each activity type has a specific dot color:
 | Activity Type | Outer ring | Inner dot |
 |---|---|---|
-| Resume tailored | `#F3E8FF` (accent-light) | `#7C5CFC` (accent) |
-| Cover letter | `#DBEAFE` (info-light) | `#61A8FF` (info) |
+| Company researched | `#F3E8FF` (accent-light) | `#7C5CFC` (accent) |
+| Resume tailored | `#DBEAFE` (info-light) | `#61A8FF` (info) |
 | Job found | `#D0FAE5` (success-light) | `#00BC7D` (success-alt) |
 Dot size: 8px inner, 16px outer with white border
 
@@ -326,7 +326,7 @@ Dot size: 8px inner, 16px outer with white border
 | Chart                            | Color                                                           |
 | -------------------------------- | --------------------------------------------------------------- |
 | Jobs Found Over Time (line)      | `#7C5CFC` stroke, 3px width, gradient fill rgba(124,92,252,0.2) |
-| Resume Tailoring Activity (bars) | `#61A8FF`                                                       |
+| Company Research Activity (bars) | `#61A8FF`                                                       |
 | Match Score Distribution (bars)  | `#10B981`                                                       |
 | Chart grid lines                 | `1px dashed #E7EAF3`                                            |
 | Chart axis labels                | `#9CA3AF`, 12px                                                 |

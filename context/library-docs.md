@@ -682,6 +682,20 @@ await capturePostHogServerEvent(userId, "company_researched", {
 - Call `posthog.identify(userId)` after login on client side
 - Call `posthog.reset()` on logout on client side
 
+### Dashboard Analytics Data
+
+Dashboard charts are DB-first and must not depend on PostHog query credentials. Use InsForge data already scoped to the current user:
+
+- Jobs Found Over Time: completed `agent_runs` where `run_type = 'job_discovery'`, grouped by `completed_at`, using `jobs_found`
+- Match Score Distribution: saved `jobs.match_score`
+- Company Research Activity: `jobs.company_researched_at`
+
+Rules:
+
+- Keep PostHog event capture for analytics, but do not add server-side dashboard dependencies on PostHog project IDs or personal API keys.
+- Empty chart states should mean the DB has no relevant rows/values, not that analytics credentials are missing.
+- Query bounded windows for dashboard charts: 30 days for jobs found and 7 days for company research activity.
+
 ---
 
 ## @react-pdf/renderer
