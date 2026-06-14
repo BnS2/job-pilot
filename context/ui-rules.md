@@ -101,6 +101,17 @@ font-weight: 500
 
 Trend badges on stat cards use `border-radius: 4px` (not pill) with `#ECFDF5` background and `#009966` text.
 
+### Badge Color Rules
+
+- **Success/green** (`bg-success-lightest text-success-foreground`): matched skills, active status, match scores
+- **Accent/purple** (`bg-accent-muted text-accent`): research icon wells, accent indicators
+- **Info/blue** (`bg-info-lightest text-info-foreground`): applied status
+- **Neutral/gray** (`bg-surface-secondary text-text-secondary`): unavailable, archived status
+- **Error/red** (`bg-error/10 text-error`): gap/missing skills, rejected status
+- **Complete** (`bg-success-light text-success-dark`): completed status
+
+Never mix accent tokens (purple) with error tokens (red) in the same badge. A rejected badge must use error tokens only. Accent/purple is reserved for interactive elements, primary actions, and neutral gap-state indicators — never for failure or terminal-negative states.
+
 ---
 
 ## Buttons
@@ -165,9 +176,11 @@ background track: #E7EAF3
 
 Fill color by score:
 
-- 80-100%: `#10B981` (green)
-- 60-79%: `#61A8FF` (blue)
-- Below 60%: `#FF8904` (orange)
+- 85-100%: `bg-success` (green)
+- 70-84%: `bg-info-medium` (blue)
+- Below 70%: `bg-warning` (orange)
+
+Use `MATCH_THRESHOLD` and `MATCH_STRONG_THRESHOLD` from `lib/utils.ts`; do not hardcode threshold values in components or queries.
 
 ---
 
@@ -196,3 +209,37 @@ This project uses Tailwind v4. Tokens are defined with `@theme` in globals.css �
 - Never show raw error messages to users — always show human readable text
 - Never stack more than 2 levels of border radius inside each other
 - Never use `position: fixed` for UI elements — use normal flow layout
+
+---
+
+## Toast Notifications
+
+Toast notifications appear in the bottom-right corner for ambient awareness. They are additive — never remove existing inline status cards, banners, or feedback text when adding a toast.
+
+**When to use a toast:**
+
+- Background job searches complete or fail (find-jobs)
+- Company research completes or fails (job details)
+- Job status transitions succeed or fail (job details)
+- Resume upload, extraction, generation, or deletion completes or fails (profile)
+
+**When NOT to use a toast:**
+
+- Form validation errors (inline label text is better)
+- Auth flow errors (inline in the login card is better)
+- Errors that need a persistent call-to-action (banners are better)
+
+**Implementation:**
+
+Toasts are powered by `sonner` with a thin wrapper at `lib/toast.tsx`. Always use the `toast` helper — never call sonner directly:
+
+```typescript
+import { toast } from "@/lib/toast";
+
+toast.success("Jobs found.");
+toast.error("Something went wrong.");
+toast.info("Background search in progress.");
+```
+
+The `Toaster` component lives in root layout at `position="bottom-right"` with `visibleToasts={3}`.
+All toast helpers render the same compact rich notification shell: token icon, primary message typography, tonal background, 4px inset tone stripe, and responsive 360px max width.

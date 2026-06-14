@@ -288,15 +288,21 @@ Current active environment variables:
 | ------------------------------ | ----------------------------------------------------------------------- |
 | `NEXT_PUBLIC_INSFORGE_URL`     | `lib/insforge-client.ts`, `lib/insforge-server.ts`, `proxy.ts`          |
 | `NEXT_PUBLIC_INSFORGE_ANON_KEY` | `lib/insforge-client.ts`, `lib/insforge-server.ts`, `proxy.ts`          |
+| `INSFORGE_API_KEY`             | `lib/insforge-admin.ts`, background workflows only                      |
 | `NEXT_PUBLIC_POSTHOG_KEY`      | `instrumentation-client.ts`, `lib/posthog-server.ts`                    |
 | `NEXT_PUBLIC_POSTHOG_HOST`     | `lib/posthog-server.ts`, `next.config.ts` PostHog reverse-proxy destinations |
 | `GEMINI_API_KEY`               | `lib/gemini.ts`                                                         |
 | `ADZUNA_APP_ID`                | `lib/adzuna.ts`                                                         |
 | `ADZUNA_APP_KEY`               | `lib/adzuna.ts`                                                         |
+| `INNGEST_DEV`                  | `inngest/client.ts` local dev mode                                      |
+| `INNGEST_EVENT_KEY`            | `inngest/client.ts` cloud event sending                                 |
+| `INNGEST_SIGNING_KEY`          | `app/api/inngest/route.ts`                                              |
 
 `NEXT_PUBLIC_` prefix means the variable is exposed to the browser. Never add `NEXT_PUBLIC_` to secret keys.
 
 When adding a new variable, update `.env.schema`, this table, and the consuming module in the same feature. If the value is secret, mark it sensitive in Varlock and keep it server-only.
+
+Inngest local development should run with `INNGEST_DEV=1` and `inngest dev -u http://localhost:3000/api/inngest`; cloud event/signing keys are not required for that path. In production/cloud mode, configure `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY`.
 
 ---
 
@@ -307,9 +313,10 @@ The job match threshold is defined once as a constant. Never hardcode this value
 ```typescript
 // lib/utils.ts
 export const MATCH_THRESHOLD = 70;
+export const MATCH_STRONG_THRESHOLD = 85;
 ```
 
-Import and use `MATCH_THRESHOLD` everywhere this value is needed.
+Import and use `MATCH_THRESHOLD` everywhere the high/low match boundary is needed. Import and use `MATCH_STRONG_THRESHOLD` wherever the strong-match visual boundary is needed.
 
 ---
 
@@ -355,6 +362,7 @@ Approved dependencies for this project:
 - `posthog-node` — PostHog server client
 - `@react-pdf/renderer` — Resume PDF generation
 - `pdf-parse` — Extract text from uploaded PDF
+- `inngest` — durable background workflows for long-running agent jobs
 - `zod` — Schema validation
 - `lucide-react` — Icons
 - `tailwindcss` — Styling

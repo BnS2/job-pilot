@@ -1,10 +1,12 @@
 import Link from "next/link";
 
+import { MatchScoreMeter } from "@/components/MatchScoreMeter";
 import { JobsPagination } from "@/components/find-jobs/JobsPagination";
 import {
   getJobStatusBadgeClass,
   getJobStatusLabel,
   isJobStatus,
+  normalizeSalaryDisplay,
   type JobStatus,
 } from "@/lib/utils";
 
@@ -44,12 +46,6 @@ function BuildingIcon({ className }: { className: string }) {
       />
     </svg>
   );
-}
-
-function getMatchFillClass(score: number): string {
-  if (score >= 85) return "bg-success";
-  if (score >= 70) return "bg-info-medium";
-  return "bg-warning";
 }
 
 function getSourceLabel(source: "search" | "url" | null): string {
@@ -204,20 +200,15 @@ export function JobsTable({ jobs, page, pageSize, totalCount, status }: Props) {
                     </Link>
                   </td>
                   <td className="px-6 py-6">
-                    <div className="flex items-center gap-3">
-                      <span className="h-1.5 w-32 rounded-full bg-border-light relative overflow-hidden">
-                        <span
-                          className={`block h-full rounded-full ${getMatchFillClass(matchScore)}`}
-                          style={{ width: `${matchScore}%` }}
-                        />
-                      </span>
+                    <div className="flex items-start gap-3">
+                      <MatchScoreMeter score={matchScore} />
                       <span className="text-sm font-semibold leading-5 text-text-dark">
                         {matchScore}%
                       </span>
                     </div>
                   </td>
                   <td className="px-6 py-6 text-sm font-medium leading-5 text-text-secondary">
-                    {job.salary || "Not specified"}
+                    {normalizeSalaryDisplay(job.salary) || "Not specified"}
                   </td>
                   <td className="px-6 py-6">
                     <span

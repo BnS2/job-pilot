@@ -346,14 +346,30 @@ Build the complete job details page UI. Job data from DB is already available fr
 
 # Feature 14 — Company Research Agent (Updated)
 
-Agent researches the company using Gemini 2.5 Flash Google Search grounding and URL Context, then builds a structured dossier with Gemini 3.5 Flash. No Browserbase, Stagehand, Playwright, or Puppeteer is used. Three data sources are fused together: company website content, job description from DB, user profile from DB.
+Agent researches the company using an Inngest background workflow. The workflow uses Gemini 2.5 Flash Google Search grounding and URL Context, then builds a structured dossier with Gemini 3.5 Flash. No Browserbase, Stagehand, Playwright, or Puppeteer is used. Three data sources are fused together: company website content, job description from DB, user profile from DB.
+
+**Agent runtime:**
+
+- Add Inngest as the durable workflow runtime for long-running agent work.
+- Create an Inngest client and `/api/inngest` route so local/dev/cloud Inngest can discover and execute functions.
+- Add a `company-research.requested` event and `company-research` function.
+- Keep InsForge as the durable product database and source of truth for user-visible state.
+- Feature 14 migrates company research to Inngest and the follow-up review moved Find Jobs to the same event-driven workflow pattern.
 
 **Logic:**
 
 - POST /api/agent/research receives jobId
-- Load job data from DB — extract company_name, job description, matched_skills, missing_skills
-- Load user profile from DB — skills, experience, work history
-- If jobs.company_research already exists — return it immediately, do not spend another Gemini call
+- Authenticate the current user and verify the job belongs to that user
+- If jobs.company_research already exists — return it immediately, do not enqueue or spend another Gemini call
+- If research is already running — return the current running state instead of enqueueing duplicate work
+- Otherwise set:
+  - `company_research_status = 'running'`
+  - `company_research_started_at = now()`
+  - `company_research_error = null`
+  - `company_research_run_id` to the Inngest event/run handle when available
+- Send the `company-research.requested` Inngest event and return immediately
+- Inngest function loads job data from DB — extract company_name, job description, matched_skills, missing_skills
+- Inngest function loads user profile from DB — skills, experience, work history
 - Derive a likely employer URL by following the Adzuna redirect with server-side fetch() — no browser needed for this step:
   - fetch(redirect_url, { redirect: "follow" }) follows HTTP redirects natively before Gemini research runs
   - Use response.url as the real employer job page URL
@@ -376,7 +392,28 @@ Agent researches the company using Gemini 2.5 Flash Google Search grounding and 
   - Validate parsed JSON with Zod before saving
 - If web research returns no useful content — still run structured synthesis with job description and profile only
 - Save complete dossier to jobs.company_research jsonb column
+- On successful save, set:
+  - `company_research_status = 'completed'`
+  - `company_research_error = null`
+  - `company_researched_at = now()`
+- If the final synthesis/save cannot produce a valid dossier after retries, set:
+  - `company_research_status = 'failed'`
+  - `company_research_error` to a human-readable retry message
+  - `company_research_started_at = null`
+  - leave `company_research` null so retry is straightforward
 - Always return a dossier — never fail silently
+
+**Schema / migration:**
+
+- Add company research metadata columns to `jobs`:
+  - `company_research_status text default 'idle'`
+  - `company_research_error text`
+  - `company_research_started_at timestamptz`
+  - `company_researched_at timestamptz`
+  - `company_research_run_id text`
+- Add allowed status constraint: `idle`, `running`, `completed`, `failed`
+- Backfill existing researched rows to `completed` and unresearchered rows to `idle`
+- Add an index for `jobs(user_id, company_research_status)`
 
 **Gemini web research call:**
 
@@ -459,6 +496,7 @@ Temperature: 0.4
 - At most 4 public URLs considered per research run
 - Never loop over search results with additional Gemini calls
 - Cache final dossier in jobs.company_research and reuse it
+- Do not enqueue duplicate research for the same job while status is `running`
 
 **Browser-agent fallback policy:**
 
@@ -496,6 +534,13 @@ The Company Research card on the job details page must render all 9 fields:
 - **Smart Questions** — bullet list (questions to ask in interview)
 - **Interview Prep** — bullet list
 - **Sources** — small text, links to pages researched
+
+The empty/running/error states use the same card:
+
+- `idle` or null research — enabled Research Company button
+- `running` — disabled loading button and short progress copy; client refreshes/polls page data
+- `failed` — human-readable inline error and retry button
+- `completed` — render the saved dossier and keep the cached result without spending another Gemini call
 
 ## Phase 5 — Dashboard
 

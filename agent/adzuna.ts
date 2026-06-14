@@ -1,14 +1,17 @@
+import { isTransientGeminiError, wait } from "@/agent/geminiUtils";
 import { matchJobToProfile } from "@/agent/matcher";
 import { finishAgentRun, logAgentMessage, startJobDiscoveryRun } from "@/agent/logs";
 import {
+  dedupeAdzunaJobs,
   detectAdzunaCountry,
   isSupportedAdzunaFallbackLocation,
   searchAdzunaJobs,
   type NormalizedAdzunaJob,
 } from "@/lib/adzuna";
+import { createGeminiClient, GEMINI_FAST_MODEL, GEMINI_TEXT_MODEL } from "@/lib/gemini";
+import { createInsforgeAdmin } from "@/lib/insforge-admin";
 import { capturePostHogServerEvent } from "@/lib/posthog-server";
-import { createInsforgeServer } from "@/lib/insforge-server";
-import { MATCH_THRESHOLD, type ProfileData } from "@/lib/utils";
+import { MATCH_STRONG_THRESHOLD, type ProfileData } from "@/lib/utils";
 
 export type DiscoverJobsResult =
   | {
@@ -37,6 +40,7 @@ type DiscoverJobsInput = {
   jobTitle: string;
   requestedLocation: string;
   profile: ProfileData;
+  runId?: string | null;
 };
 
 type JobInsertRecord = {
@@ -77,7 +81,7 @@ function hasText(value: string | null | undefined): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function hasMatchingSignal(profile: ProfileData): boolean {
+export function hasMatchingSignal(profile: ProfileData): boolean {
   const hasRoleSignal =
     hasText(profile.current_title) ||
     Boolean(profile.job_titles_seeking?.some(hasText)) ||
@@ -90,7 +94,10 @@ function hasMatchingSignal(profile: ProfileData): boolean {
   return hasRoleSignal && hasSkillSignal;
 }
 
-function resolveSearchLocation(requestedLocation: string, profile: ProfileData): string {
+export function resolveSearchLocation(
+  requestedLocation: string,
+  profile: ProfileData,
+): string {
   const trimmed = requestedLocation.trim();
 
   if (trimmed) {
@@ -156,7 +163,7 @@ async function findExistingJob(
   sourceJobId: string,
   sourceUrl: string,
 ): Promise<ExistingJobRecord | null> {
-  const insforge = await createInsforgeServer();
+  const insforge = createInsforgeAdmin();
 
   if (sourceJobId.trim()) {
     const { data, error } = await insforge.database
@@ -203,7 +210,7 @@ async function findExistingJob(
 }
 
 async function saveOrRefreshJob(record: JobInsertRecord): Promise<string | null> {
-  const insforge = await createInsforgeServer();
+  const insforge = createInsforgeAdmin();
   const existingJob = await findExistingJob(
     record.user_id,
     record.source_job_id,
@@ -276,6 +283,7 @@ export async function discoverJobsFromAdzuna({
   jobTitle,
   requestedLocation,
   profile,
+  runId: existingRunId,
 }: DiscoverJobsInput): Promise<DiscoverJobsResult> {
   const normalizedTitle = jobTitle.trim();
 
@@ -288,7 +296,9 @@ export async function discoverJobsFromAdzuna({
   }
 
   const resolvedLocation = resolveSearchLocation(requestedLocation, profile);
-  const runId = await startJobDiscoveryRun(userId, normalizedTitle, resolvedLocation || null);
+  const runId =
+    existingRunId ??
+    await startJobDiscoveryRun(userId, normalizedTitle, resolvedLocation || null);
 
   try {
     await logAgentMessage(
@@ -353,7 +363,7 @@ export async function discoverJobsFromAdzuna({
 
       jobsSaved++;
 
-      if (record.match_score >= MATCH_THRESHOLD) {
+      if (record.match_score >= MATCH_STRONG_THRESHOLD) {
         strongMatches++;
       }
 
@@ -411,6 +421,289 @@ export async function discoverJobsFromAdzuna({
       runId,
       "error",
       "Job discovery failed while searching Adzuna or saving results.",
+    );
+    await finishAgentRun(userId, runId, "failed");
+
+    return {
+      success: false,
+      error: "Failed to find jobs. Please try again in a moment.",
+      code: "adzuna_failed",
+    };
+  }
+}
+
+async function generateSearchQueryVariant(
+  profile: ProfileData,
+  primaryRole: string,
+): Promise<string | null> {
+  const skills = (profile.skills ?? []).filter(hasText).slice(0, 5);
+  const industries = (profile.industries ?? []).filter(hasText).slice(0, 3);
+  const yearsExperience = typeof profile.years_experience === "number" ? profile.years_experience : null;
+  const experienceLevel = profile.experience_level ?? "";
+
+  const profileSummary = {
+    role: primaryRole,
+    skills: skills.join(", "),
+    industries: industries.join(", "),
+    ...(yearsExperience !== null ? { yearsExperience } : {}),
+    ...(experienceLevel ? { experienceLevel } : {}),
+  };
+
+  const prompt = `You are helping a job seeker find relevant IT jobs on a job board.
+Given this profile, suggest ONE alternative search query (3-6 words) that might surface different relevant IT positions.
+Use different keyword combinations than "${primaryRole}".
+Return only the query string, no explanation, no quotes, no JSON.
+
+Candidate profile:
+${JSON.stringify(profileSummary, null, 2)}`;
+
+  const gemini = createGeminiClient();
+  const modelAttempts = [GEMINI_FAST_MODEL, GEMINI_TEXT_MODEL];
+
+  for (const [index, model] of modelAttempts.entries()) {
+    try {
+      const response = await gemini.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          temperature: 0.5,
+          maxOutputTokens: 50,
+        },
+      });
+
+      const query = response.text?.trim();
+
+      if (!query || query.length < 3 || query.length > 120) {
+        return null;
+      }
+
+      return query;
+    } catch (error) {
+      const retryable = isTransientGeminiError(error);
+
+      if (!retryable || index === modelAttempts.length - 1) {
+        if (retryable) {
+          console.error("[agent/adzuna] Query variant generation failed (transient):", error);
+        } else {
+          console.error("[agent/adzuna] Query variant generation failed:", error);
+        }
+        return null;
+      }
+
+      await wait(600 * (index + 1));
+    }
+  }
+
+  return null;
+}
+
+type DiscoverFromProfileInput = {
+  userId: string;
+  requestedLocation: string;
+  profile: ProfileData;
+  runId: string | null;
+};
+
+export async function discoverJobsFromProfile({
+  userId,
+  requestedLocation,
+  profile,
+  runId: existingRunId,
+}: DiscoverFromProfileInput): Promise<DiscoverJobsResult> {
+  if (!hasMatchingSignal(profile)) {
+    return {
+      success: false,
+      error: "Complete your profile with a target role, skills, and work experience before using Best Match.",
+      code: "incomplete_profile",
+    };
+  }
+
+  const primaryRole =
+    profile.job_titles_seeking?.find(hasText) ??
+    profile.current_title?.trim() ??
+    "";
+
+  if (!primaryRole) {
+    return {
+      success: false,
+      error: "Add a target role to your profile before using Best Match.",
+      code: "incomplete_profile",
+    };
+  }
+
+  const resolvedLocation = resolveSearchLocation(requestedLocation, profile);
+  const runId =
+    existingRunId ??
+    await startJobDiscoveryRun(userId, "Best Match", resolvedLocation || null, "profile_best_match");
+
+  try {
+    await logAgentMessage(
+      userId,
+      runId,
+      "info",
+      `Best Match discovery started for "${primaryRole}"${resolvedLocation ? ` in ${resolvedLocation}` : ""}.`,
+    );
+
+    const topSkills = (profile.skills ?? []).filter(hasText).slice(0, 3);
+    const baseQuery = topSkills.length > 0
+      ? `${primaryRole} ${topSkills.join(" ")}`
+      : primaryRole;
+
+    const queries: string[] = [baseQuery];
+
+    const hasRichProfile =
+      (profile.skills ?? []).filter(hasText).length >= 3 &&
+      (profile.work_experience ?? []).length > 0;
+
+    if (hasRichProfile) {
+      await logAgentMessage(userId, runId, "info", "Generating alternative search queries from your profile.");
+      const variant = await generateSearchQueryVariant(profile, primaryRole);
+      if (variant && !queries.includes(variant)) {
+        queries.push(variant);
+      }
+    }
+
+    const searchQueries = queries.slice(0, 2);
+    await logAgentMessage(
+      userId,
+      runId,
+      "info",
+      `Searching with queries: ${searchQueries.map((q) => `"${q}"`).join(", ")}`,
+    );
+
+    const allJobs: NormalizedAdzunaJob[] = [];
+    for (const query of searchQueries) {
+      try {
+        const country = detectAdzunaCountry(resolvedLocation);
+        const jobs = await searchAdzunaJobs(query, resolvedLocation, country);
+        allJobs.push(...jobs);
+      } catch (error) {
+        console.error(`[agent/adzuna] Best Match search failed for query "${query}":`, error);
+        await logAgentMessage(userId, runId, "warning", `Search failed for "${query}". Continuing with remaining queries.`);
+      }
+    }
+
+    if (allJobs.length === 0) {
+      await logAgentMessage(userId, runId, "warning", "No IT jobs found for your profile-based search.");
+      await finishAgentRun(userId, runId, "completed", 0);
+
+      return {
+        success: true,
+        data: {
+          runId,
+          jobsFound: 0,
+          jobsSaved: 0,
+          strongMatches: 0,
+          message: "No matching IT jobs were found for your profile. Try broadening your skills or target role.",
+          empty: true,
+        },
+      };
+    }
+
+    const dedupedJobs = dedupeAdzunaJobs(allJobs);
+    const scoredJobs = dedupedJobs.slice(0, 10);
+
+    await logAgentMessage(
+      userId,
+      runId,
+      "info",
+      `Found ${dedupedJobs.length} unique jobs. Scoring top ${scoredJobs.length}.`,
+    );
+
+    let jobsSaved = 0;
+    let strongMatches = 0;
+    let lastSaveFailed = false;
+
+    for (const job of scoredJobs) {
+      const matchResult = await matchJobToProfile(job, profile, { userId, runId });
+
+      if (!matchResult.success) {
+        continue;
+      }
+
+      const record = toJobRecord(
+        userId,
+        runId,
+        job,
+        matchResult.match.matchScore,
+        matchResult.match.matchReason,
+        matchResult.match.matchedSkills,
+        matchResult.match.missingSkills,
+      );
+
+      const savedJobId = await saveOrRefreshJob(record);
+
+      if (!savedJobId) {
+        lastSaveFailed = true;
+        await logAgentMessage(
+          userId,
+          runId,
+          "error",
+          `Failed to save ${job.company} — ${job.title}.`,
+        );
+        continue;
+      }
+
+      jobsSaved++;
+
+      if (record.match_score >= MATCH_STRONG_THRESHOLD) {
+        strongMatches++;
+      }
+
+      await logAgentMessage(
+        userId,
+        runId,
+        "success",
+        `Saved ${job.company} — ${job.title} with a ${record.match_score}% match.`,
+        savedJobId,
+      );
+
+      await capturePostHogServerEvent(userId, "job_found", {
+        userId,
+        source: "search",
+        matchScore: record.match_score,
+      });
+    }
+
+    await finishAgentRun(
+      userId,
+      runId,
+      jobsSaved > 0 ? "completed" : "failed",
+      dedupedJobs.length,
+    );
+
+    if (jobsSaved === 0) {
+      return {
+        success: false,
+        error: lastSaveFailed
+          ? "Jobs were found, but none could be saved. Please try again."
+          : "Jobs were found, but none could be scored right now. Please try again.",
+        code: lastSaveFailed ? "save_failed" : "temporary_unavailable",
+      };
+    }
+
+    const message = `Found ${dedupedJobs.length} jobs, saved ${jobsSaved} jobs (${strongMatches} strong matches).`;
+    await logAgentMessage(userId, runId, "success", message);
+
+    return {
+      success: true,
+      data: {
+        runId,
+        jobsFound: dedupedJobs.length,
+        jobsSaved,
+        strongMatches,
+        message,
+        empty: false,
+      },
+    };
+  } catch (error) {
+    console.error("[agent/adzuna] Best Match discovery error:", error);
+
+    await logAgentMessage(
+      userId,
+      runId,
+      "error",
+      "Best Match discovery failed while searching Adzuna or saving results.",
     );
     await finishAgentRun(userId, runId, "failed");
 

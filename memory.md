@@ -1,74 +1,75 @@
-# Memory — JobPilot Review Follow-Up
+# Memory — Job Details Status UX Polish
 
-Last updated: 2026-06-12 22:37 PST
+Last updated: 2026-06-14
 
 ## What was built
 
-Completed a review-fix pass against the current code. Still-valid findings were fixed in:
+Reworked the job details page status actions for better discoverability and visual clarity:
 
-- `app/api/agent/find/route.ts`
-- `app/api/auth/refresh/route.ts`
-- `app/find-jobs/page.tsx`
-- `components/find-jobs/JobsTable.tsx`
-- `lib/auth-client.ts`
-- `lib/adzuna.ts`
-- `agent/adzuna.ts`
-- `proxy.ts`
-- `context/architecture.md`
-- `context/build-plan.md`
-- `context/library-docs.md`
-- `context/ui-registry.md`
-- `context/progress-tracker.md`
+1. **`lib/utils.ts`** — added `getJobStatusAccentClass()` returning `border-l-4 border-l-{status-token}` per non-active status. Changed rejected badge from `text-accent` to `text-error`.
 
-Specific outcomes:
+2. **`components/job-details/StatusDropdown.tsx`** — when `STATUS_TRANSITIONS[status]` has only 1 entry (archived/rejected/completed → "Restore Active"), renders a direct primary button (`bg-accent text-accent-foreground`) with refresh icon instead of a dropdown. Auto-fires an availability check (`/api/agent/availability`) after restoring to active. Both success and error feedback messages auto-dismiss after 3 seconds via `useEffect` timeout.
 
-- Search-start PostHog capture is best-effort and no longer blocks Adzuna discovery.
-- `/api/auth/refresh` returns 500 on unexpected exceptions without clearing cookies; confirmed auth failures still clear cookies.
-- `/find-jobs` login redirects preserve query params, paginated DB ordering is deterministic with `id` as a secondary sort, and DB failures render an explicit token-styled error card instead of an empty jobs table.
-- `JobsTable` now handles invalid dates and null `source` values safely.
-- `clearExpiredSession()` now throws when `/api/auth/logout` fails so callers can detect cleanup failure.
-- Adzuna search requests now use a 5-second `AbortController` timeout and translate aborts into a clear timeout error.
-- `proxy.ts` wraps `updateSession()` in try/catch and redirects to login with cookie cleanup on unexpected session update errors.
-- Agent success copy now reports found jobs, saved jobs, and strong matches.
-- Context docs were corrected for applied-job lifecycle exclusion, InsForge storage upload replacement flow, and one-sided Adzuna salary ranges.
+3. **`components/job-details/JobHeader.tsx`** — card `section` appends accent border class from `getJobStatusAccentClass()` (info for applied, warning for unavailable, muted for archived, error for rejected, success for completed).
+
+4. **`components/job-details/JobActions.tsx`** — slimmed to just the apply CTA via `getApplyCta()`: primary "Apply Now" for active, muted "Already Applied" for applied, muted "Position Unavailable" for unavailable, hidden (`null`) for archived/rejected/completed. Removed `StatusDropdown` and `CheckAvailabilityButton` (moved to toolbar).
+
+5. **`components/find-jobs/CheckAvailabilityButton.tsx`** — auto-dismiss messages after 3 seconds (same pattern as StatusDropdown).
+
+6. **`components/job-details/JobStatusToolbar.tsx`** (new) — thin client wrapper reading status from `JobStatusProvider` context, renders `StatusDropdown` + conditional `CheckAvailabilityButton` (only for active/unavailable).
+
+7. **`app/find-jobs/[id]/page.tsx`** — `BackToJobsLink` and `JobStatusToolbar` now share a `flex justify-between` row at the top inside `JobStatusProvider`. `JobActions` no longer takes `jobId`.
+
+8. **`context/ui-registry.md`** and **`context/progress-tracker.md`** — updated with all new patterns.
 
 ## Decisions made
 
-- Review comments were verified against current code before changing anything; none of the attached findings were stale.
-- `/find-jobs` DB failures should be visible as a page-level load error while preserving the search/filter controls, not hidden behind empty-state UI.
-- InsForge Storage replacement guidance remains upload-new-first: persist the new `url` and `key`, then remove the previous active object only after the new metadata is active. Do not use an `upsert` upload option.
+- Rejected accent color changed from primary purple (`accent`) to red (`error`) across card border and badge — purple is reserved for positive brand actions.
+- Restore-to-active auto-checks availability so the user doesn't have to manually click "Check Availability" right after restoring.
+- Status actions moved to top toolbar row alongside "Back to Jobs" — discoverable at eye level, no scrolling needed.
+- Apply CTA now reflects status: hidden for terminal states, muted for applied/unavailable, only active shows the primary link.
 
 ## Problems solved
 
-- Prevented analytics outages from breaking job search.
-- Prevented transient refresh-route exceptions from forcing sign-out and cookie deletion.
-- Removed non-deterministic pagination when rows tie on match score or found date.
-- Stopped malformed `found_at` values from leaking confusing date output into the jobs table.
-- Added a deterministic timeout for slow/hung Adzuna requests.
-- Reconciled docs that still implied unsupported storage upload upsert behavior.
+- "Restore Active" required two clicks (open dropdown → click option) when it was the only option — now one click via direct button.
+- Non-active states (rejected, archived, completed) were visually identical to active on the card — now have a 4px left-border accent strip.
+- "Apply Now" button showed even on rejected/already-applied jobs — now status-aware.
+- "Status updated." and "Job listing appears to be active" messages persisted forever — now auto-dismiss after 3s.
 
 ## Current state
 
-- Working tree is dirty with the review-fix changes listed above.
-- Validation passed:
-  - `npm run lint`
-  - `npx tsc --noEmit`
-  - `npm run build`
-- The first sandboxed `npm run build` failed only because Next.js needed network access to fetch the Google-hosted Inter font. The build passed after rerunning with network approval.
-- `context/progress-tracker.md` still shows Phase 3 with Feature 11 complete and Feature 12 — Job Lifecycle + Stale Listing Handling — next.
+- Recent toast-specific lint and TypeScript checks pass.
+- Full `npm run lint` is currently blocked by the existing `components/job-details/AvailabilityIndicator.tsx` `react-hooks/set-state-in-effect` warning/error.
+- All changes are uncommitted.
 
 ## Next session starts with
 
-1. Run `/remember restore`.
-2. Read the required AGENTS/context files in order before implementation.
-3. Decide whether to commit the current dirty working tree before starting Feature 12.
-4. Start Feature 12 from `context/build-plan.md`: lifecycle schema/migration, status filtering, status actions, availability refresh rules, and Adzuna cross-run upsert behavior.
-5. Use the InsForge skills/docs before touching backend schema, SQL, or SDK code.
+1. Run `/remember restore` then read AGENTS/context files.
+2. Manually test the job details page for rejected, active, applied, and archived states:
+   - Verify accent border strip appears on non-active jobs.
+   - Verify "Restore Active" is a direct primary button (no dropdown) for rejected/archived/completed.
+   - Verify restoring to active auto-checks availability.
+   - Verify apply CTA changes per status.
+   - Verify messages auto-dismiss after 3s.
+3. Review and commit.
 
 ## Open questions
 
-- Whether to commit the accumulated review-fix work separately before Feature 12.
-- Exact UX placement for job status filters and lifecycle actions.
-- How conservative v1 availability checks should be for ambiguous redirects, bot blocks, rate limits, and timeouts.
-- Production deployment approach for Python/MarkItDown dependencies remains unresolved.
-- Full `?next=` preservation through the OAuth callback still needs a follow-up design decision.
+- None.
+
+---
+
+## Follow-up — Toast Notification UX Polish
+
+Status-change toasts were visually too large and appeared top-center over the job details content. `lib/toast.tsx` now lets all status toasts inherit the root Sonner `bottom-right` placement, caps toast width at 360px, uses token-derived tonal backgrounds instead of raw color literals, and adds a subtle 4px inset status stripe for visibility without the alert-card feel. `app/layout.tsx` now enables a close button and uses a 24px desktop / 16px mobile viewport offset.
+
+Follow-up consistency pass: `toast.success()`, `toast.error()`, and `toast.info()` now render the same rich toast shell as `toast.statusChange()` instead of passing raw strings to Sonner. Generic toasts now include a token icon, primary message typography, the shared responsive width, tonal background, and inset status stripe while preserving the existing helper API at all call sites.
+
+Company research follow-up: `CompanyResearchCard` now uses `toast.statusChange()` for completion and research-start failures instead of the generic success/error helpers. The completion toast is titled `Company research ready`, shows the company as subtitle, and uses the slower completed/status duration so it does not feel smaller or faster than the job lifecycle toasts.
+
+Verification:
+
+- `npm run lint -- app/layout.tsx lib/toast.tsx` passes after the consistency pass.
+- `npx tsc --noEmit` passes.
+- `npm run build` passes when network access is allowed for the Next.js Google Font fetch.
+- Full `npm run lint` is currently blocked by the existing `components/job-details/AvailabilityIndicator.tsx` `react-hooks/set-state-in-effect` warning/error, which was not part of the toast revamp.

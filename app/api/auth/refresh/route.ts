@@ -3,6 +3,19 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { requirePublicEnv } from "@/lib/env";
 
+function getErrorStatusCode(error: unknown): number | null {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "statusCode" in error &&
+    typeof error.statusCode === "number"
+  ) {
+    return error.statusCode;
+  }
+
+  return null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const result = await refreshAuth({
@@ -12,6 +25,16 @@ export async function POST(request: NextRequest) {
     });
 
     if (result.error || !result.accessToken) {
+      const statusCode = getErrorStatusCode(result.error);
+
+      if (statusCode !== 401) {
+        console.error("[auth/refresh] Temporary refresh failure:", result.error);
+        return NextResponse.json(
+          { success: false, error: "Failed to refresh session" },
+          { status: 503 },
+        );
+      }
+
       const response = NextResponse.json(
         { success: false, error: "Session expired" },
         { status: 401 },

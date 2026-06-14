@@ -97,7 +97,7 @@ function isBlockedHostname(hostname: string): boolean {
   );
 }
 
-async function getSafeFetchUrl(rawUrl: string): Promise<SafeUrlResult> {
+export async function getSafeFetchUrl(rawUrl: string): Promise<SafeUrlResult> {
   let parsed: URL;
 
   try {
@@ -176,7 +176,7 @@ async function readResponseTextWithLimit(response: Response): Promise<string> {
   return chunks.join("");
 }
 
-async function fetchWithSafeRedirects(
+export async function fetchWithSafeRedirects(
   initialUrl: URL,
   signal: AbortSignal,
 ): Promise<Response> {

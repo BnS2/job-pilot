@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { isTransientGeminiError, wait } from "@/agent/geminiUtils";
+import { extractJsonPayload, isTransientGeminiError, wait } from "@/agent/geminiUtils";
 import { logAgentMessage } from "@/agent/logs";
 import { createGeminiClient, GEMINI_FAST_MODEL, GEMINI_TEXT_MODEL } from "@/lib/gemini";
 
@@ -65,6 +65,17 @@ type ExtractProfileOptions = {
   userId: string;
   runId: string | null;
 };
+
+class ProfileExtractionOutputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProfileExtractionOutputError";
+  }
+}
+
+function isProfileExtractionOutputError(error: unknown): boolean {
+  return error instanceof ProfileExtractionOutputError;
+}
 
 const profileJsonSchema = {
   type: "object",
@@ -186,6 +197,24 @@ ${resumeText}
 `;
 }
 
+function parseExtractedProfileResponse(text: string | undefined): ExtractedProfileData {
+  const rawText = text?.trim();
+
+  if (!rawText) {
+    throw new ProfileExtractionOutputError("Gemini returned empty resume extraction JSON.");
+  }
+
+  try {
+    return extractedProfileSchema.parse(JSON.parse(extractJsonPayload(rawText)));
+  } catch (error) {
+    if (error instanceof SyntaxError || error instanceof z.ZodError) {
+      throw new ProfileExtractionOutputError("Gemini returned malformed resume extraction JSON.");
+    }
+
+    throw error;
+  }
+}
+
 async function generateExtractedProfile(resumeText: string): Promise<ExtractedProfileData> {
   const gemini = createGeminiClient();
   const modelAttempts = [GEMINI_TEXT_MODEL, GEMINI_TEXT_MODEL, GEMINI_FAST_MODEL];
@@ -204,11 +233,14 @@ async function generateExtractedProfile(resumeText: string): Promise<ExtractedPr
         },
       });
 
-      return extractedProfileSchema.parse(JSON.parse(response.text ?? "{}"));
+      return parseExtractedProfileResponse(response.text);
     } catch (error) {
       lastError = error;
 
-      if (!isTransientGeminiError(error) || index === modelAttempts.length - 1) {
+      const retryable =
+        isTransientGeminiError(error) || isProfileExtractionOutputError(error);
+
+      if (!retryable || index === modelAttempts.length - 1) {
         throw error;
       }
 
@@ -241,13 +273,16 @@ export async function extractProfileFromResumeText(
     console.error("[agent/extractor] Extraction error:", error);
 
     const transient = isTransientGeminiError(error);
+    const malformedOutput = isProfileExtractionOutputError(error);
     await logAgentMessage(
       options.userId,
       options.runId,
       "error",
       transient
         ? "Resume extraction failed because Gemini was temporarily unavailable."
-        : "Resume extraction failed while generating structured profile data.",
+        : malformedOutput
+          ? "Resume extraction failed because Gemini returned malformed structured profile data after retries."
+          : "Resume extraction failed while generating structured profile data.",
     );
 
     if (transient) {

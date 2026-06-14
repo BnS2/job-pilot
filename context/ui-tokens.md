@@ -159,17 +159,16 @@ Match score bars and indicators use gradient stops based on score range:
 
 | Score Range | Color  | Token                                  |
 | ----------- | ------ | -------------------------------------- |
-| 90-100%     | Green  | `text-success` / `bg-success-lightest` |
-| 70-89%      | Green  | `text-success` / `bg-success-light`    |
-| 50-69%      | Orange | `text-warning`                         |
-| Below 50%   | Gray   | `text-text-muted`                      |
+| 85-100%     | Green  | `text-success` / `bg-success-lightest` |
+| 70-84%      | Blue   | `text-info-foreground` / `bg-info-medium` |
+| Below 70%   | Orange fill / neutral label | `bg-warning` / `text-text-secondary` |
 
 ### Skills Badges
 
 | Type          | Background            | Text                      |
 | ------------- | --------------------- | ------------------------- |
 | Matched skill | `bg-success-lightest` | `text-success-foreground` |
-| Missing skill | `bg-accent-muted`     | `text-accent`             |
+| Missing skill | `bg-error/10`         | `text-error`              |
 
 ### Source Badges
 
@@ -182,9 +181,12 @@ Match score bars and indicators use gradient stops based on score range:
 
 | Status     | Background             | Text                      |
 | ---------- | ---------------------- | ------------------------- |
-| Tailored   | `bg-accent-light`      | `text-accent`             |
-| High Match | `bg-success-lightest`  | `text-success-foreground` |
-| Low Match  | `bg-surface-secondary` | `text-text-secondary`     |
+| Active     | `bg-success-lightest`  | `text-success-foreground` |
+| Applied    | `bg-info-lightest`     | `text-info-foreground`    |
+| Unavailable| `bg-surface-secondary` | `text-text-secondary`     |
+| Archived   | `bg-surface-secondary` | `text-text-secondary`     |
+| Rejected   | `bg-error/10`          | `text-error`              |
+| Completed  | `bg-success-light`     | `text-success-dark`       |
 
 ---
 
@@ -229,9 +231,9 @@ Font family: **Inter** — import from Google Fonts or use next/font/google.
 
 ### Cards
 
-```
+```text
 background: bg-surface
-border: 1px solid var(--border)
+border: 1px solid var(--color-border)
 border-radius: 16px (rounded-2xl in Tailwind)
 padding: 24px (p-6)
 box-shadow: 0px 1px 3px rgba(0,0,0,0.1), 0px 1px 2px -1px rgba(0,0,0,0.1)
@@ -293,7 +295,7 @@ font-weight: font-medium
 
 ```
 background track: bg-border-light
-fill: varies by score range (see Match Score Colors above)
+fill: `bg-warning` below 70, `bg-info-medium` from 70-84, `bg-success` from 85-100
 height: 4px
 border-radius: rounded-full
 ```
@@ -331,10 +333,59 @@ Dot size: 8px inner, 16px outer with white border
 
 ### Logo
 
-```
+```text
 background: linear-gradient(45deg, #7C5CFC 0%, #4A2EC5 100%)
 border-radius: 10px
 size: 36x36px
+```
+
+### Toast Notifications
+
+```text
+position: bottom-right
+gap between toasts: 8px
+max visible at once: 3
+
+font-size: 14px
+font-weight: 500
+font-family: Inter
+border-radius: 8px (rounded-md)
+border: 1px solid var(--color-border)
+padding: 12px 16px
+max-width: 360px
+box-shadow: 0px 8px 24px color-mix(in srgb, var(--color-overlay) 14%, transparent)
+left accent: 4px inset stripe matching toast tone
+icon: 20px token-colored status icon
+
+Success toast:
+  background: success-lightest
+  color: text-primary
+  border-color: success
+
+Error toast:
+  background: color-mix(in srgb, var(--color-error) 12%, var(--color-surface))
+  color: text-primary
+  border-color: error
+
+Info toast:
+  background: info-lightest
+  color: text-primary
+  border-color: info
+
+Neutral/status toast:
+  background: surface
+  color: text-primary
+  border-color: border
+
+Warning/status toast:
+  background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface))
+  color: text-primary
+  border-color: warning
+
+Durations:
+  success/info: 3500ms
+  error: 5000ms
+  status changes: 5000-7000ms by severity
 ```
 
 ---

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 
 import { AuthSessionGuard } from "@/components/auth/AuthSessionGuard";
@@ -6,7 +7,13 @@ import { JobsTable } from "@/components/find-jobs/JobsTable";
 import { SearchControls } from "@/components/find-jobs/SearchControls";
 import { Navbar } from "@/components/layout/Navbar";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import { isJobStatus, type JobStatus } from "@/lib/utils";
+import { isJobStatus, MATCH_THRESHOLD, type JobStatus } from "@/lib/utils";
+
+export type SelectedSearchRun = {
+  id: string;
+  jobTitle: string;
+  location: string | null;
+};
 
 type FindJobsPageProps = {
   searchParams: Promise<{
@@ -19,11 +26,80 @@ type FindJobsPageProps = {
   }>;
 };
 
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export const dynamic = "force-dynamic";
+
 function firstParam(value: string | string[] | undefined): string | undefined {
   if (Array.isArray(value)) {
     return value[0];
   }
   return value;
+}
+
+function allParams(value: string | string[] | undefined): string[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  return value ? [value] : [];
+}
+
+function normalizeRunParams(value: string | string[] | undefined): string[] {
+  const runIds: string[] = [];
+
+  for (const rawRunId of allParams(value)) {
+    const runId = rawRunId.trim();
+
+    if (uuidPattern.test(runId) && !runIds.includes(runId)) {
+      runIds.push(runId);
+    }
+  }
+
+  return runIds;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function buildSelectedSearchRuns(
+  runRows: unknown[] | null | undefined,
+  selectedRunIds: string[],
+): SelectedSearchRun[] {
+  if (!runRows || runRows.length === 0) {
+    return [];
+  }
+
+  const runsById = new Map<string, SelectedSearchRun>();
+
+  for (const runRow of runRows) {
+    if (typeof runRow !== "object" || runRow === null) {
+      continue;
+    }
+
+    const id = "id" in runRow ? stringOrNull(runRow.id) : null;
+    const jobTitle =
+      "job_title_searched" in runRow
+        ? stringOrNull(runRow.job_title_searched)
+        : null;
+
+    if (!id || !jobTitle) {
+      continue;
+    }
+
+    runsById.set(id, {
+      id,
+      jobTitle,
+      location:
+        "location_searched" in runRow ? stringOrNull(runRow.location_searched) : null,
+    });
+  }
+
+  return selectedRunIds
+    .map((runId) => runsById.get(runId))
+    .filter((run): run is SelectedSearchRun => Boolean(run));
 }
 
 function normalizeTextSearchParam(value: string): string {
@@ -32,6 +108,20 @@ function normalizeTextSearchParam(value: string): string {
     .replace(/[^\p{L}\p{N}\s@._/+&#-]/gu, " ")
     .replace(/\s+/g, " ")
     .slice(0, 80);
+}
+
+function normalizeTextSearchValues(value: string | string[] | undefined): string[] {
+  const values: string[] = [];
+
+  for (const rawValue of allParams(value)) {
+    const sanitized = normalizeTextSearchParam(rawValue);
+
+    if (sanitized && !values.includes(sanitized)) {
+      values.push(sanitized);
+    }
+  }
+
+  return values;
 }
 
 function normalizeMatchParam(value: string): "all" | "high" | "low" {
@@ -83,10 +173,10 @@ function getPageRedirectPath(
   const redirectParams = new URLSearchParams();
 
   for (const [key, value] of Object.entries(params)) {
-    const paramValue = firstParam(value);
-
-    if (paramValue && key !== "page") {
-      redirectParams.set(key, paramValue);
+    for (const paramValue of allParams(value)) {
+      if (paramValue && key !== "page") {
+        redirectParams.append(key, paramValue);
+      }
     }
   }
 
@@ -104,10 +194,10 @@ function getCurrentFindJobsPath(
   const currentParams = new URLSearchParams();
 
   for (const [key, value] of Object.entries(params)) {
-    const paramValue = firstParam(value);
-
-    if (paramValue) {
-      currentParams.set(key, paramValue);
+    for (const paramValue of allParams(value)) {
+      if (paramValue) {
+        currentParams.append(key, paramValue);
+      }
     }
   }
 
@@ -117,16 +207,12 @@ function getCurrentFindJobsPath(
 
 export default async function FindJobsPage({ searchParams }: FindJobsPageProps) {
   const parsedParams = await searchParams;
-  const rawQ = firstParam(parsedParams.q) || "";
-  const q = normalizeTextSearchParam(rawQ);
+  const qValues = normalizeTextSearchValues(parsedParams.q);
   const match = normalizeMatchParam(firstParam(parsedParams.match) || "all");
   const sort = normalizeSortParam(firstParam(parsedParams.sort) || "match");
   const status = normalizeStatusParam(firstParam(parsedParams.status) || "active");
-  const run = firstParam(parsedParams.run) || "";
-  const isValidRunUuid =
-    run.trim() &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(run.trim());
   const page = parsePageParam(firstParam(parsedParams.page));
+  const selectedRunIds = normalizeRunParams(parsedParams.run);
   const pageSize = 20;
 
   const insforge = await createInsforgeServer();
@@ -136,27 +222,133 @@ export default async function FindJobsPage({ searchParams }: FindJobsPageProps) 
     redirect(`/login?next=${encodeURIComponent(getCurrentFindJobsPath(parsedParams))}`);
   }
 
+  let selectedSearchRuns: SelectedSearchRun[] = [];
+
+  if (selectedRunIds.length > 0) {
+    const { data: runRows, error: runRowsError } = await insforge.database
+      .from("agent_runs")
+      .select("id,job_title_searched,location_searched,status")
+      .eq("user_id", authData.user.id)
+      .in("id", selectedRunIds)
+      .eq("status", "completed");
+
+    if (runRowsError) {
+      console.error("[FindJobsPage] Selected search runs query error:", runRowsError);
+    } else {
+      selectedSearchRuns = buildSelectedSearchRuns(runRows, selectedRunIds);
+    }
+  }
+
+  const selectedSearchRunIds = selectedSearchRuns.map((run) => run.id);
+
+  return (
+    <div className="min-h-screen bg-background">
+      <AuthSessionGuard />
+      <Navbar activePath="/find-jobs" fullWidth showCta={false} />
+      <main className="mx-auto flex max-w-[1440px] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
+        <SearchControls />
+        <JobFilters
+          key={status}
+          qValues={qValues}
+          match={match}
+          selectedSearchRuns={selectedSearchRuns}
+          sort={sort}
+          status={status}
+        />
+        <Suspense fallback={<JobsTableSkeleton />}>
+          <FindJobsResults
+            match={match}
+            page={page}
+            pageSize={pageSize}
+            parsedParams={parsedParams}
+            qValues={qValues}
+            selectedRunIds={selectedSearchRunIds}
+            sort={sort}
+            status={status}
+            userId={authData.user.id}
+          />
+        </Suspense>
+      </main>
+    </div>
+  );
+}
+
+function JobsTableSkeleton() {
+  return (
+    <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+      <div className="border-b border-border bg-surface-secondary px-8 py-5">
+        <div className="h-4 w-36 rounded-full bg-border-light" />
+      </div>
+      <div className="space-y-0">
+        {Array.from({ length: 5 }, (_, index) => (
+          <div
+            className="grid min-h-20 grid-cols-[2fr_2fr_1.3fr_1fr] items-center gap-6 border-b border-border px-8 py-5 last:border-b-0"
+            key={index}
+          >
+            <div className="flex items-center gap-4">
+              <div className="h-10 w-10 rounded-md border border-border bg-surface-secondary" />
+              <div className="h-4 w-36 rounded-full bg-border-light" />
+            </div>
+            <div className="h-4 w-48 rounded-full bg-border-light" />
+            <div className="h-2 w-32 rounded-full bg-border-light" />
+            <div className="h-4 w-20 rounded-full bg-border-light" />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+type FindJobsResultsProps = {
+  match: "all" | "high" | "low";
+  page: number;
+  pageSize: number;
+  parsedParams: Awaited<FindJobsPageProps["searchParams"]>;
+  qValues: string[];
+  selectedRunIds: string[];
+  sort: "match" | "newest" | "oldest";
+  status: JobStatus | "all";
+  userId: string;
+};
+
+async function FindJobsResults({
+  match,
+  page,
+  pageSize,
+  parsedParams,
+  qValues,
+  selectedRunIds,
+  sort,
+  status,
+  userId,
+}: FindJobsResultsProps) {
+  const insforge = await createInsforgeServer();
   let dbQuery = insforge.database
     .from("jobs")
-    .select("*", { count: "exact" })
-    .eq("user_id", authData.user.id);
-
-  if (isValidRunUuid) {
-    dbQuery = dbQuery.eq("run_id", run.trim());
-  }
+    .select("id,company,title,match_score,salary,source,found_at,status", { count: "exact" })
+    .eq("user_id", userId);
 
   if (status !== "all") {
     dbQuery = dbQuery.eq("status", status);
   }
 
-  if (q) {
-    dbQuery = dbQuery.or(`title.ilike.%${q}%,company.ilike.%${q}%`);
+  if (selectedRunIds.length > 0) {
+    dbQuery = dbQuery.in("run_id", selectedRunIds);
+  }
+
+  if (qValues.length > 0) {
+    const andValue = qValues
+      .map((term) => `or(title.ilike.%${term}%,company.ilike.%${term}%)`)
+      .join(",");
+    // InsForge/PostgREST does not expose grouped `and=(or(...))`; this narrows the internal query URL.
+    const params = (dbQuery as unknown as { url: URL }).url.searchParams;
+    params.append("and", `(${andValue})`);
   }
 
   if (match === "high") {
-    dbQuery = dbQuery.gte("match_score", 70);
+    dbQuery = dbQuery.gte("match_score", MATCH_THRESHOLD);
   } else if (match === "low") {
-    dbQuery = dbQuery.lt("match_score", 70);
+    dbQuery = dbQuery.lt("match_score", MATCH_THRESHOLD);
   }
 
   if (sort === "match") {
@@ -183,22 +375,14 @@ export default async function FindJobsPage({ searchParams }: FindJobsPageProps) 
     console.error("[FindJobsPage] Database query error:", error);
 
     return (
-      <div className="min-h-screen bg-background">
-        <AuthSessionGuard />
-        <Navbar activePath="/find-jobs" fullWidth showCta={false} />
-        <main className="mx-auto flex max-w-[1440px] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-12">
-          <SearchControls />
-          <JobFilters key={`${q}-${status}`} q={q} match={match} sort={sort} status={status} />
-          <section className="rounded-xl border border-border bg-surface p-6 shadow-sm">
-            <h2 className="text-base font-semibold leading-6 text-text-primary">
-              Jobs could not be loaded
-            </h2>
-            <p className="mt-2 text-sm font-medium leading-5 text-text-secondary">
-              Refresh the page or try again in a moment.
-            </p>
-          </section>
-        </main>
-      </div>
+      <section className="flex flex-col items-center justify-center rounded-xl border border-border bg-surface p-8 shadow-sm text-center">
+        <h2 className="text-base font-semibold leading-6 text-text-primary">
+          Jobs could not be loaded
+        </h2>
+        <p className="mt-2 text-sm font-medium leading-5 text-text-secondary max-w-md">
+          Something went wrong while fetching your jobs. Please refresh the page or try again in a moment.
+        </p>
+      </section>
     );
   }
 
@@ -210,20 +394,12 @@ export default async function FindJobsPage({ searchParams }: FindJobsPageProps) 
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <AuthSessionGuard />
-      <Navbar activePath="/find-jobs" fullWidth showCta={false} />
-      <main className="mx-auto flex max-w-[1440px] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-12">
-        <SearchControls />
-        <JobFilters key={`${q}-${status}`} q={q} match={match} sort={sort} status={status} />
-        <JobsTable
-          jobs={jobs ?? []}
-          page={page}
-          pageSize={pageSize}
-          totalCount={totalCount}
-          status={status}
-        />
-      </main>
-    </div>
+    <JobsTable
+      jobs={jobs ?? []}
+      page={page}
+      pageSize={pageSize}
+      totalCount={totalCount}
+      status={status}
+    />
   );
 }

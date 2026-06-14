@@ -82,7 +82,7 @@ export function Navbar({
       <div
         className={
           fullWidth
-            ? "flex h-full items-center justify-between px-4 sm:px-6"
+            ? "mx-auto flex h-full max-w-[1440px] items-center justify-between px-4 sm:px-6 lg:px-8"
             : "mx-auto flex h-full max-w-[1110px] items-center justify-between px-4 sm:px-6"
         }
       >

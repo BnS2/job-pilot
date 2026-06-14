@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-import { clearExpiredSession, getLoginRedirectPath } from "@/lib/auth-client";
+import { clearBrowserAuthState, getLoginRedirectPath } from "@/lib/auth-client";
 
 export function AuthSessionGuard() {
   const router = useRouter();
@@ -20,7 +20,7 @@ export function AuthSessionGuard() {
         }
 
         if (response.status === 401) {
-          await clearExpiredSession();
+          await clearBrowserAuthState();
 
           if (!isActive) {
             return;

@@ -1,35 +1,46 @@
-import { createInsforgeServer } from "@/lib/insforge-server";
+import { createInsforgeAdmin } from "@/lib/insforge-admin";
 
 type AgentRunStatus = "running" | "completed" | "failed";
 type AgentLogLevel = "info" | "success" | "warning" | "error";
+type AgentRunType =
+  | "job_discovery"
+  | "company_research"
+  | "availability_check"
+  | "resume_extraction"
+  | "resume_generation";
+
+type AgentRunResult = Record<string, unknown>;
 
 export async function startResumeExtractionRun(userId: string): Promise<string | null> {
-  return startProfileAgentRun(userId, "resume_extraction");
+  return startProfileAgentRun(userId, "resume_extraction", "resume_extraction");
 }
 
 export async function startResumeGenerationRun(userId: string): Promise<string | null> {
-  return startProfileAgentRun(userId, "resume_generation");
+  return startProfileAgentRun(userId, "resume_generation", "resume_generation");
 }
 
 export async function startAvailabilityCheckRun(userId: string): Promise<string | null> {
-  return startProfileAgentRun(userId, "availability_check");
+  return startProfileAgentRun(userId, "availability_check", "availability_check");
 }
 
 export async function startJobDiscoveryRun(
   userId: string,
   jobTitle: string,
   location: string | null,
+  searchMode: "manual_search" | "profile_best_match" = "manual_search",
 ): Promise<string | null> {
   try {
-    const insforge = await createInsforgeServer();
+    const insforge = createInsforgeAdmin();
     const { data, error } = await insforge.database
       .from("agent_runs")
       .insert([{
         user_id: userId,
+        run_type: "job_discovery",
         status: "running",
         job_title_searched: jobTitle,
         location_searched: location,
         jobs_found: 0,
+        search_mode: searchMode,
       }])
       .select("id")
       .single();
@@ -46,15 +57,20 @@ export async function startJobDiscoveryRun(
   }
 }
 
-async function startProfileAgentRun(userId: string, runType: string): Promise<string | null> {
+async function startProfileAgentRun(
+  userId: string,
+  jobTitleSearched: string,
+  runType: AgentRunType,
+): Promise<string | null> {
   try {
-    const insforge = await createInsforgeServer();
+    const insforge = createInsforgeAdmin();
     const { data, error } = await insforge.database
       .from("agent_runs")
       .insert([{
         user_id: userId,
+        run_type: runType,
         status: "running",
-        job_title_searched: runType,
+        job_title_searched: jobTitleSearched,
         location_searched: null,
         jobs_found: 0,
       }])
@@ -84,7 +100,7 @@ export async function finishAgentRun(
   }
 
   try {
-    const insforge = await createInsforgeServer();
+    const insforge = createInsforgeAdmin();
     const { error } = await insforge.database
       .from("agent_runs")
       .update({
@@ -103,6 +119,65 @@ export async function finishAgentRun(
   }
 }
 
+export async function completeAgentRunWithResult(
+  userId: string,
+  runId: string | null,
+  result: AgentRunResult,
+): Promise<void> {
+  if (!runId) {
+    return;
+  }
+
+  try {
+    const insforge = createInsforgeAdmin();
+    const { error } = await insforge.database
+      .from("agent_runs")
+      .update({
+        status: "completed",
+        result,
+        error_message: null,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", runId)
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("[agent/logs] Failed to complete agent run with result:", error);
+    }
+  } catch (error) {
+    console.error("[agent/logs] System error completing agent run with result:", error);
+  }
+}
+
+export async function failAgentRun(
+  userId: string,
+  runId: string | null,
+  errorMessage: string,
+): Promise<void> {
+  if (!runId) {
+    return;
+  }
+
+  try {
+    const insforge = createInsforgeAdmin();
+    const { error } = await insforge.database
+      .from("agent_runs")
+      .update({
+        status: "failed",
+        error_message: errorMessage,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", runId)
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("[agent/logs] Failed to fail agent run:", error);
+    }
+  } catch (error) {
+    console.error("[agent/logs] System error failing agent run:", error);
+  }
+}
+
 export async function logAgentMessage(
   userId: string,
   runId: string | null,
@@ -116,7 +191,7 @@ export async function logAgentMessage(
   }
 
   try {
-    const insforge = await createInsforgeServer();
+    const insforge = createInsforgeAdmin();
     const { error } = await insforge.database
       .from("agent_logs")
       .insert([{

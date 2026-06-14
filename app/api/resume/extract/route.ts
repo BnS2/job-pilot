@@ -1,29 +1,78 @@
 import { NextResponse } from "next/server";
 
-import { extractProfileFromResumeText } from "@/agent/extractor";
-import { finishAgentRun, logAgentMessage, startResumeExtractionRun } from "@/agent/logs";
-import { extractResumeTextFromPdf } from "@/agent/resumeText";
+import { failAgentRun, startResumeExtractionRun } from "@/agent/logs";
+import { inngest, inngestEventKey, isInngestDev } from "@/inngest/client";
 import { createInsforgeServer } from "@/lib/insforge-server";
 
 export const runtime = "nodejs";
 
+function getMissingRuntimeConfig(): string[] {
+  const missing = ["GEMINI_API_KEY", "INSFORGE_API_KEY"].filter((name) => !process.env[name]);
+
+  if (!isInngestDev) {
+    if (!inngestEventKey) {
+      missing.push("INNGEST_EVENT_KEY");
+    }
+
+    if (!process.env.INNGEST_SIGNING_KEY) {
+      missing.push("INNGEST_SIGNING_KEY");
+    }
+  }
+
+  return missing;
+}
+
+type AuthenticatedUserResult = {
+  insforge: Awaited<ReturnType<typeof createInsforgeServer>>;
+  userId: string | null;
+  authUnavailable: boolean;
+};
+
+async function getAuthenticatedUser(): Promise<AuthenticatedUserResult> {
+  const insforge = await createInsforgeServer();
+  const { data: userData, error: userError } = await insforge.auth.getCurrentUser();
+
+  if (userError) {
+    console.error("[api/resume/extract] Auth lookup error:", userError);
+    return { insforge, userId: null, authUnavailable: true };
+  }
+
+  if (!userData.user) {
+    return { insforge, userId: null, authUnavailable: false };
+  }
+
+  return { insforge, userId: userData.user.id, authUnavailable: false };
+}
+
 export async function POST() {
-  let runId: string | null = null;
-  let userId: string | null = null;
-
   try {
-    const insforge = await createInsforgeServer();
-    const { data: userData, error: userError } = await insforge.auth.getCurrentUser();
+    const { insforge, userId, authUnavailable } = await getAuthenticatedUser();
 
-    if (userError || !userData.user) {
+    if (authUnavailable) {
       return NextResponse.json(
-        { success: false, error: "Unauthorized" },
+        { success: false, error: "Could not verify your session. Please try again." },
+        { status: 503 },
+      );
+    }
+
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: "Your session expired. Please sign in again." },
         { status: 401 },
       );
     }
 
-    userId = userData.user.id;
-    runId = await startResumeExtractionRun(userId);
+    const missingRuntimeConfig = getMissingRuntimeConfig();
+    if (missingRuntimeConfig.length > 0) {
+      console.error(
+        "[api/resume/extract] Missing resume extraction runtime config:",
+        missingRuntimeConfig.join(", "),
+      );
+      return NextResponse.json(
+        { success: false, error: "Resume extraction is not configured yet." },
+        { status: 500 },
+      );
+    }
 
     const { data: profile, error: profileError } = await insforge.database
       .from("profiles")
@@ -33,14 +82,6 @@ export async function POST() {
 
     if (profileError) {
       console.error("[api/resume/extract] Profile fetch error:", profileError);
-      await logAgentMessage(
-        userId,
-        runId,
-        "error",
-        "Resume extraction failed because the saved profile could not be loaded.",
-      );
-      await finishAgentRun(userId, runId, "failed");
-
       return NextResponse.json(
         { success: false, error: "Failed to locate resume" },
         { status: 500 },
@@ -48,92 +89,47 @@ export async function POST() {
     }
 
     if (!profile?.resume_pdf_key) {
-      await logAgentMessage(
-        userId,
-        runId,
-        "error",
-        "Resume extraction failed because no resume file is attached to the profile.",
-      );
-      await finishAgentRun(userId, runId, "failed");
-
       return NextResponse.json(
         { success: false, error: "Upload a resume before extracting profile details." },
         { status: 400 },
       );
     }
 
-    const { data: resumeBlob, error: downloadError } = await insforge.storage
-      .from("resumes")
-      .download(profile.resume_pdf_key);
-
-    if (downloadError || !resumeBlob) {
-      console.error("[api/resume/extract] Download error:", downloadError);
-      await logAgentMessage(
-        userId,
-        runId,
-        "error",
-        "Resume extraction failed because the stored resume could not be downloaded.",
-      );
-      await finishAgentRun(userId, runId, "failed");
-
+    const runId = await startResumeExtractionRun(userId);
+    if (!runId) {
       return NextResponse.json(
-        { success: false, error: "Failed to download resume" },
+        { success: false, error: "Could not start resume extraction." },
         { status: 500 },
       );
     }
 
-    const resumeBuffer = Buffer.from(await resumeBlob.arrayBuffer());
-    const resumeText = await extractResumeTextFromPdf(resumeBuffer);
-    console.info(`[api/resume/extract] Resume text extracted with ${resumeText.source}.`);
-
-    await logAgentMessage(
-      userId,
-      runId,
-      "info",
-      `Resume text extracted with ${resumeText.source}.`,
-    );
-
-    const extraction = await extractProfileFromResumeText(resumeText.text, {
-      userId,
-      runId,
-    });
-
-    if (!extraction.success) {
-      await finishAgentRun(userId, runId, "failed");
-
+    try {
+      await inngest.send({
+        name: "resume-extraction.requested",
+        data: { runId, userId },
+      });
+    } catch (error) {
+      console.error("[api/resume/extract] Failed to enqueue resume extraction:", error);
+      await failAgentRun(
+        userId,
+        runId,
+        "Resume extraction could not be started. Please try again.",
+      );
       return NextResponse.json(
-        { success: false, error: extraction.error },
-        { status: extraction.code === "temporary_unavailable" ? 503 : 422 },
+        { success: false, error: "Could not start resume extraction." },
+        { status: 500 },
       );
     }
 
-    await logAgentMessage(
-      userId,
-      runId,
-      "success",
-      "Resume extraction completed and returned profile fields for review.",
-    );
-    await finishAgentRun(userId, runId, "completed");
-
     return NextResponse.json({
       success: true,
-      data: extraction.profile,
-      meta: {
-        textExtractor: resumeText.source,
+      data: {
+        runId,
+        status: "running",
       },
     });
   } catch (error) {
     console.error("[api/resume/extract] System error:", error);
-
-    if (userId) {
-      await logAgentMessage(
-        userId,
-        runId,
-        "error",
-        "Resume extraction failed because of an unexpected system error.",
-      );
-      await finishAgentRun(userId, runId, "failed");
-    }
 
     return NextResponse.json(
       { success: false, error: "Internal server error" },

@@ -303,6 +303,7 @@ const jobRecord = {
 - Discovery should upsert matching existing jobs for the same user instead of inserting duplicates across search runs. Match by `source_job_id` first, then normalized `source_url` / `external_apply_url` when a provider ID is missing.
 - When a matching existing job is found, refresh listing metadata, match fields, `run_id`, `found_at`, and `last_seen_at`. Preserve user pipeline status unless the existing row is `unavailable` and the listing is now confirmed available again.
 - Do not hard-delete stale listings. Mark them `unavailable`, `archived`, `applied`, `rejected`, or `completed` through explicit lifecycle transitions.
+- Find Jobs runs as an Inngest background workflow. `/api/agent/find` validates the user/profile, creates an `agent_runs` row, sends `job-discovery.requested`, and returns the run ID immediately. The UI keeps the current list visible, stores per-term run indicators in browser storage, polls run status by ID, resumes polling active runs when the user returns to `/find-jobs`, summarizes found/saved/strong-match counts from the run's saved jobs, and refreshes the list when runs complete. Terminal run indicators remain visible until the user dismisses them. Background run-status polling must not clear cookies or call `/api/auth/logout`; auth provider/InsForge timeouts should be retryable status checks, not destructive sign-outs.
 - `salary_is_predicted: "1"` means Adzuna estimated the salary — this is normal
 - Adzuna description is a snippet — Gemini scores from it, not a full description
 - Default country to `'us'` — support `gb`, `au`, `ca` as alternatives
@@ -411,8 +412,9 @@ const result = matchSchema.parse(JSON.parse(response.text ?? "{}"));
 - Always validate parsed JSON with Zod before using it
 - Always wrap Gemini calls in try/catch and log failures to agent_logs for agent operations
 - For job matching, retry transient Gemini errors and malformed or empty structured JSON before falling back from `GEMINI_TEXT_MODEL` to `GEMINI_FAST_MODEL`
-- For resume extraction and resume generation, retry transient Gemini errors and fall back from `GEMINI_TEXT_MODEL` to `GEMINI_FAST_MODEL` before returning a temporary-service error
+- For resume extraction, resume generation, and company research synthesis, retry transient Gemini errors and fall back from `GEMINI_TEXT_MODEL` to `GEMINI_FAST_MODEL` before returning a temporary-service error
 - Match threshold is always `MATCH_THRESHOLD` from `lib/utils.ts` — never hardcode 70
+- Strong match visual threshold is always `MATCH_STRONG_THRESHOLD` from `lib/utils.ts` — never hardcode 85
 - Company research synthesis must always return a complete dossier — never return empty even if web research failed
 
 ---
@@ -548,6 +550,57 @@ Fallback rules:
 - Save the same dossier fields after synthesis
 - Consider Browserless, Steel, or Hyperbrowser only if local Playwright is too fragile or hard to scale
 - Do not add this fallback until there is evidence that Gemini URL Context is not enough for the current public-company-research workflow
+
+---
+
+## Inngest
+
+**Check first:** Check current Inngest docs before changing workflow code. Inngest v4 is the selected durable workflow runtime for long-running JobPilot agent jobs.
+
+### Project Convention
+
+```text
+inngest/client.ts                  → Inngest client instance
+inngest/functions/*.ts             → durable workflow definitions
+app/api/inngest/route.ts           → Inngest serve endpoint
+app/api/agent/*/route.ts           → authenticated app trigger boundaries
+```
+
+### Rules
+
+- Use Inngest for long-running agent workflows that should not block a Next.js request/response cycle.
+- API routes authenticate users, validate ownership, update InsForge-visible status, and send Inngest events.
+- Inngest functions call `agent/` business logic and persist final product state to InsForge.
+- InsForge remains the durable app source of truth for all UI-visible job state, statuses, timestamps, and results.
+- Because Inngest functions do not have user request cookies, they use the server-only InsForge admin client and must explicitly scope every query/update by `user_id`.
+- Store workflow/run handles on app rows when useful for debugging, but do not make the UI depend on Inngest as the only state source.
+- Use Inngest steps for external calls and durable sub-operations that may retry.
+- Keep payloads small: pass IDs and user IDs, then load full records from InsForge inside the workflow.
+- Job discovery uses the same Inngest pattern as company research. The route creates the durable `agent_runs` row first so the UI can poll it while the workflow runs.
+- Local development uses `INNGEST_DEV=1` with `inngest dev -u http://localhost:3000/api/inngest`; do not require cloud event/signing keys for local testing.
+- Use `INNGEST_EVENT_KEY` for SDK event sending. Do not add or require the Inngest management API key for the current workflow.
+- Production/cloud mode still requires `INNGEST_SIGNING_KEY` so `/api/inngest` can verify requests from Inngest.
+- Do not import React components, Server Actions, or browser-only clients from Inngest functions.
+- For v1 UI, poll or refresh InsForge-backed status instead of wiring Inngest Realtime. Add Realtime only when progress streaming is product-critical.
+- Add or change Inngest env vars in `.env.schema` before consuming them.
+
+### Feature 14 Pattern
+
+```typescript
+await inngest.send({
+  name: "company-research.requested",
+  data: { userId, jobId },
+});
+```
+
+The company research function should:
+
+1. Load and verify the user-owned job and profile from InsForge.
+2. Return early if a valid cached dossier already exists.
+3. Run Gemini web research and structured synthesis in bounded steps.
+4. Save the completed dossier to `jobs.company_research`.
+5. Set research metadata (`completed` / `failed`, timestamp, human-readable error).
+6. Capture `company_researched` only after a valid dossier is saved.
 
 ---
 

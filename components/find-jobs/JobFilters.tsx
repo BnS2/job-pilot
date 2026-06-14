@@ -11,8 +11,6 @@ import {
 
 import { getJobStatusLabel, type JobStatus } from "@/lib/utils";
 
-const searchDebounceMs = 700;
-
 function SearchIcon({ className }: { className: string }) {
   return (
     <svg
@@ -51,9 +49,35 @@ function ChevronIcon({ className }: { className: string }) {
   );
 }
 
+function XIcon({ className }: { className: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="m6 6 12 12M18 6 6 18"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+type SelectedSearchRun = {
+  id: string;
+  jobTitle: string;
+  location: string | null;
+};
+
 type Props = {
-  q: string;
+  qValues: string[];
   match: string;
+  selectedSearchRuns: SelectedSearchRun[];
   sort: string;
   status: JobStatus | "all";
 };
@@ -66,18 +90,36 @@ function normalizeSearchValue(value: string): string {
     .slice(0, 80);
 }
 
-export function JobFilters({ q, match, sort, status }: Props) {
+function getSearchRunLabel(run: SelectedSearchRun): string {
+  return run.location ? `${run.jobTitle} - ${run.location}` : run.jobTitle;
+}
+
+export function JobFilters({ qValues, match, selectedSearchRuns, sort, status }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const [searchVal, setSearchVal] = useState(q);
+  const [searchVal, setSearchVal] = useState("");
   const [matchOpen, setMatchOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const matchMenuRef = useRef<HTMLDivElement>(null);
   const sortMenuRef = useRef<HTMLDivElement>(null);
   const statusMenuRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const justAddedChip = useRef(false);
+  const prevQValuesRef = useRef(qValues);
+
+  useEffect(() => {
+    if (prevQValuesRef.current !== qValues) {
+      prevQValuesRef.current = qValues;
+      setSearchVal("");
+      if (justAddedChip.current) {
+        justAddedChip.current = false;
+        inputRef.current?.focus();
+      }
+    }
+  }, [qValues]);
 
   const createQueryString = useCallback(
     (params: Record<string, string | null>) => {
@@ -100,25 +142,83 @@ export function JobFilters({ q, match, sort, status }: Props) {
 
   const replaceWithQuery = useCallback(
     (queryString: string): void => {
-      router.replace(queryString ? `${pathname}?${queryString}` : pathname, {
-        scroll: false,
-      });
+      const url = queryString ? `${pathname}?${queryString}` : pathname;
+      router.replace(url, { scroll: false });
+      router.refresh();
     },
     [pathname, router],
   );
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const normalizedSearch = normalizeSearchValue(searchVal);
+  const removeSearchRun = useCallback(
+    (runId: string): void => {
+      const current = new URLSearchParams(Array.from(searchParams.entries()));
+      const nextRunIds = current.getAll("run").filter((currentRunId) => currentRunId !== runId);
 
-      if (normalizedSearch !== q) {
-        const qs = createQueryString({ q: normalizedSearch || null });
-        replaceWithQuery(qs);
+      current.delete("run");
+      current.delete("page");
+
+      for (const nextRunId of nextRunIds) {
+        current.append("run", nextRunId);
       }
-    }, searchDebounceMs);
 
-    return () => clearTimeout(timer);
-  }, [searchVal, q, createQueryString, replaceWithQuery]);
+      replaceWithQuery(current.toString());
+    },
+    [replaceWithQuery, searchParams],
+  );
+
+  const removeTextFilter = useCallback(
+    (qValue: string): void => {
+      const current = new URLSearchParams(Array.from(searchParams.entries()));
+      const nextQValues = current
+        .getAll("q")
+        .filter((currentQ) => normalizeSearchValue(currentQ) !== qValue);
+
+      current.delete("q");
+      current.delete("page");
+
+      for (const nextQ of nextQValues) {
+        current.append("q", nextQ);
+      }
+
+      replaceWithQuery(current.toString());
+    },
+    [replaceWithQuery, searchParams],
+  );
+
+  const addTextFilter = useCallback(
+    (value: string): void => {
+      const normalized = normalizeSearchValue(value);
+
+      if (!normalized) {
+        return;
+      }
+
+      const current = new URLSearchParams(Array.from(searchParams.entries()));
+      const existing = current.getAll("q").map((v) => v.trim()).filter(Boolean);
+
+      if (!existing.includes(normalized)) {
+        current.append("q", normalized);
+      }
+
+      current.delete("page");
+      replaceWithQuery(current.toString());
+      setSearchVal("");
+      justAddedChip.current = true;
+    },
+    [replaceWithQuery, searchParams],
+  );
+
+  const clearSearchFilters = useCallback((): void => {
+    const current = new URLSearchParams(Array.from(searchParams.entries()));
+    current.delete("q");
+    current.delete("run");
+    current.delete("page");
+    replaceWithQuery(current.toString());
+    setSearchVal("");
+  }, [replaceWithQuery, searchParams]);
+
+  const hasFilters = qValues.length > 0 || selectedSearchRuns.length > 0;
+  const chipCount = qValues.length + selectedSearchRuns.length;
 
   useEffect(() => {
     function closeOnOutsidePointer(event: PointerEvent): void {
@@ -151,10 +251,7 @@ export function JobFilters({ q, match, sort, status }: Props) {
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
       e.preventDefault();
-      const normalizedSearch = normalizeSearchValue(searchVal);
-      const qs = createQueryString({ q: normalizedSearch || null });
-      setSearchVal(normalizedSearch);
-      replaceWithQuery(qs);
+      addTextFilter(searchVal);
     }
   }
 
@@ -189,18 +286,80 @@ export function JobFilters({ q, match, sort, status }: Props) {
       aria-label="Job list controls"
       className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-4 shadow-sm lg:flex-row lg:items-center"
     >
-      <label className="flex h-10 min-w-0 flex-1 items-center gap-3 text-text-muted">
-        <SearchIcon className="h-5 w-5 shrink-0" />
-        <span className="sr-only">Filter by company or role</span>
-        <input
-          className="h-full min-w-0 flex-1 bg-transparent text-sm font-medium leading-5 text-text-primary outline-none placeholder:text-text-muted"
-          onChange={(e) => setSearchVal(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Filter by company or role..."
-          type="text"
-          value={searchVal}
-        />
-      </label>
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <label className="flex h-10 min-w-0 items-center gap-3 text-text-muted">
+          <SearchIcon className="h-5 w-5 shrink-0" />
+          <span className="sr-only">Filter by company or role</span>
+          <input
+            className="h-full min-w-0 flex-1 bg-transparent text-sm font-medium leading-5 text-text-primary outline-none placeholder:text-text-muted"
+            onChange={(e) => setSearchVal(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Filter by company or role..."
+            ref={inputRef}
+            type="text"
+            value={searchVal}
+          />
+          {searchVal ? (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none shrink-0 select-none text-xs font-medium leading-4 text-text-muted"
+            >
+              Enter ↵
+            </span>
+          ) : null}
+        </label>
+
+        {hasFilters ? (
+          <div
+            aria-label="Active search filters"
+            className="flex flex-wrap items-center gap-2 pl-8"
+          >
+            {qValues.map((qValue) => (
+              <span
+                className="inline-flex max-w-full items-center gap-2 rounded-full border border-accent/20 bg-accent-muted px-3 py-1 text-xs font-medium leading-4 text-accent"
+                key={qValue}
+              >
+                <span className="min-w-0 truncate">{qValue}</span>
+                <button
+                  aria-label={`Remove "${qValue}" filter`}
+                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-accent hover:bg-surface"
+                  onClick={() => removeTextFilter(qValue)}
+                  type="button"
+                >
+                  <XIcon className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+
+            {selectedSearchRuns.map((run) => (
+              <span
+                className="inline-flex max-w-full items-center gap-2 rounded-full border border-accent/20 bg-accent-muted px-3 py-1 text-xs font-medium leading-4 text-accent"
+                key={run.id}
+              >
+                <span className="min-w-0 truncate">{getSearchRunLabel(run)}</span>
+                <button
+                  aria-label={`Remove ${run.jobTitle} search filter`}
+                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-accent hover:bg-surface"
+                  onClick={() => removeSearchRun(run.id)}
+                  type="button"
+                >
+                  <XIcon className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+
+            {chipCount > 1 ? (
+              <button
+                className="inline-flex h-6 items-center justify-center rounded-md border border-border bg-surface px-2 text-xs font-medium leading-4 text-text-secondary hover:bg-surface-secondary hover:text-text-dark"
+                onClick={clearSearchFilters}
+                type="button"
+              >
+                Clear search filters
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
 
       <div className="hidden h-10 w-px bg-border lg:block" />
 

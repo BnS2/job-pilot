@@ -1,4 +1,5 @@
 export const MATCH_THRESHOLD = 70;
+export const MATCH_STRONG_THRESHOLD = 85;
 
 export const JOB_STATUSES = [
   "active",
@@ -34,11 +35,30 @@ export function getJobStatusBadgeClass(status: JobStatus): string {
     applied: "bg-info-lightest text-info-foreground",
     unavailable: "bg-surface-secondary text-text-secondary",
     archived: "bg-surface-secondary text-text-secondary",
-    rejected: "bg-accent-muted text-accent",
+    rejected: "bg-error/10 text-error",
     completed: "bg-success-light text-success-dark",
   };
 
   return classes[status];
+}
+
+export function getJobStatusAccentClass(status: JobStatus): string {
+  const classes: Record<JobStatus, string> = {
+    active: "",
+    applied: "border-l-4 border-l-info",
+    unavailable: "border-l-4 border-l-warning",
+    archived: "border-l-4 border-l-text-muted",
+    rejected: "border-l-4 border-l-error",
+    completed: "border-l-4 border-l-success",
+  };
+
+  return classes[status];
+}
+
+export function normalizeSalaryDisplay(salary: string | null): string | null {
+  if (!salary) return salary;
+  const match = salary.match(/^(\$\d+k) - (\$\d+k)$/);
+  return match && match[1] === match[2] ? match[1] : salary;
 }
 
 export type EducationData = {
