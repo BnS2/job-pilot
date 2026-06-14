@@ -50,6 +50,25 @@ function SparkleIcon({ className }: { className: string }) {
   );
 }
 
+function LinkIcon({ className }: { className: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="M10.5 13.5a4 4 0 0 0 5.7.1l2.4-2.4a4 4 0 1 0-5.7-5.7l-1.4 1.4m2 3.6a4 4 0 0 0-5.7-.1l-2.4 2.4a4 4 0 1 0 5.7 5.7l1.4-1.4"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
 function XIcon({ className }: { className: string }) {
   return (
     <svg
@@ -70,12 +89,16 @@ function XIcon({ className }: { className: string }) {
 }
 
 type RunPhase = "initializing" | "running" | "completed" | "failed";
+type RunKind = "adzuna_search" | "url_import";
 
 type TrackedRun = {
   runId: string;
+  runKind?: RunKind;
   jobTitle: string;
   location: string;
   searchMode: "manual_search" | "profile_best_match";
+  sourceUrl?: string | null;
+  providerLabel?: string | null;
   status: RunPhase;
   jobsFound: number;
   jobsSaved: number;
@@ -96,6 +119,10 @@ function isRunPhase(value: unknown): value is RunPhase {
   );
 }
 
+function isRunKind(value: unknown): value is RunKind {
+  return value === "adzuna_search" || value === "url_import";
+}
+
 function isStoredTrackedRun(value: unknown): value is TrackedRun {
   return (
     typeof value === "object" &&
@@ -108,6 +135,11 @@ function isStoredTrackedRun(value: unknown): value is TrackedRun {
     typeof value.location === "string" &&
     "searchMode" in value &&
     (value.searchMode === "manual_search" || value.searchMode === "profile_best_match") &&
+    (!("runKind" in value) || isRunKind(value.runKind)) &&
+    (!("sourceUrl" in value) || typeof value.sourceUrl === "string" || value.sourceUrl === null) &&
+    (!("providerLabel" in value) ||
+      typeof value.providerLabel === "string" ||
+      value.providerLabel === null) &&
     "status" in value &&
     isRunPhase(value.status) &&
     "jobsFound" in value &&
@@ -156,8 +188,10 @@ export function SearchControls() {
   const searchParams = useSearchParams();
   const [jobTitle, setJobTitle] = useState("");
   const [location, setLocation] = useState("");
+  const [jobUrl, setJobUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isImportingUrl, setIsImportingUrl] = useState(false);
   const [trackedRuns, setTrackedRuns] = useState<TrackedRun[]>([]);
   const [hasLoadedStoredRuns, setHasLoadedStoredRuns] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -237,7 +271,49 @@ export function SearchControls() {
     return 0;
   }
 
+  function getStatusMessage(data: object | null): string | null {
+    if (data && "statusMessage" in data && typeof data.statusMessage === "string") {
+      return data.statusMessage;
+    }
+
+    return null;
+  }
+
+  function getProviderLabel(data: object | null): string | null {
+    if (data && "providerLabel" in data && typeof data.providerLabel === "string") {
+      return data.providerLabel;
+    }
+
+    return null;
+  }
+
   function getRunProgressMessage(run: TrackedRun): string {
+    if (run.runKind === "url_import") {
+      const providerLabel = run.providerLabel ?? "job URL";
+
+      if (run.status === "initializing") {
+        return `Starting import from ${providerLabel}.`;
+      }
+
+      if (run.status === "completed") {
+        return run.jobsSaved > 0
+          ? `Imported ${providerLabel} job.`
+          : `${providerLabel} import completed, but no job was saved.`;
+      }
+
+      if (run.status === "failed") {
+        return run.statusMessage ?? `${providerLabel} import failed. Please try another public job URL.`;
+      }
+
+      if (run.statusMessage) {
+        return run.statusMessage;
+      }
+
+      return providerLabel === "URL"
+        ? "Importing job URL."
+        : `Importing job from ${providerLabel}.`;
+    }
+
     const isBestMatch = run.searchMode === "profile_best_match";
     const label = isBestMatch ? "Best Match" : `"${run.jobTitle}"`;
 
@@ -297,6 +373,10 @@ export function SearchControls() {
   }
 
   function getRunTone(run: TrackedRun): NoticeTone {
+    if (run.runKind === "url_import" && run.status === "completed" && run.jobsSaved > 0) {
+      return "success";
+    }
+
     if (run.status === "completed" && run.strongMatches > 0) {
       return "success";
     }
@@ -409,8 +489,10 @@ export function SearchControls() {
       await Promise.all(
         activeRuns.map(async (run) => {
           try {
+            const statusEndpoint =
+              run.runKind === "url_import" ? "/api/agent/import-url" : "/api/agent/find";
             const response = await fetch(
-              `/api/agent/find?runId=${encodeURIComponent(run.runId)}`,
+              `${statusEndpoint}?runId=${encodeURIComponent(run.runId)}`,
             );
 
             if (response.status === 401) {
@@ -464,13 +546,20 @@ export function SearchControls() {
             const jobsFound = getJobsFound(data);
             const jobsSaved = getJobsSaved(data);
             const strongMatches = getStrongMatches(data);
+            const statusMessage = getStatusMessage(data);
+            const providerLabel = getProviderLabel(data);
 
             if (status === "running") {
               if (!cancelled) {
                 setTrackedRuns((current) =>
                   current.map((item) =>
                     item.runId === run.runId
-                      ? { ...item, status: "running", statusMessage: null }
+                      ? {
+                          ...item,
+                          status: "running",
+                          providerLabel: providerLabel ?? item.providerLabel,
+                          statusMessage: null,
+                        }
                       : item,
                   ),
                 );
@@ -489,18 +578,29 @@ export function SearchControls() {
                           jobsFound,
                           jobsSaved,
                           strongMatches,
+                          providerLabel: providerLabel ?? item.providerLabel,
                           completedAt: item.completedAt ?? Date.now(),
                           statusMessage:
                             status === "failed"
-                              ? "Job search failed. Please try again in a moment."
+                              ? statusMessage ??
+                                (item.runKind === "url_import"
+                                  ? "URL import failed. Please try another public job URL."
+                                  : "Job search failed. Please try again in a moment.")
                               : null,
                         }
                       : item,
                   ),
                 );
-                const label = run.searchMode === "profile_best_match" ? "Best Match" : `"${run.jobTitle}"`;
+                const label =
+                  run.runKind === "url_import"
+                    ? providerLabel ?? run.providerLabel ?? "URL import"
+                    : run.searchMode === "profile_best_match"
+                      ? "Best Match"
+                      : `"${run.jobTitle}"`;
                 if (status === "completed") {
-                  if (strongMatches > 0) {
+                  if (run.runKind === "url_import") {
+                    toast.success(`Imported ${label} job.`);
+                  } else if (strongMatches > 0) {
                     toast.success(`${label} found ${jobsFound} jobs, ${strongMatches} strong matches.`);
                   } else if (jobsSaved > 0) {
                     toast.info(`${label} found ${jobsFound} jobs, ${jobsSaved} saved.`);
@@ -522,7 +622,10 @@ export function SearchControls() {
                     ? {
                         ...item,
                         status: "running",
-                        statusMessage: `Checking "${item.jobTitle}" status again in a moment.`,
+                        statusMessage:
+                          item.runKind === "url_import"
+                            ? "Checking URL import status again in a moment."
+                            : `Checking "${item.jobTitle}" status again in a moment.`,
                       }
                     : item,
                 ),
@@ -597,6 +700,7 @@ export function SearchControls() {
         if (runId) {
           const nextRun: TrackedRun = {
             runId,
+            runKind: "adzuna_search",
             jobTitle: submittedJobTitle,
             location: submittedLocation,
             searchMode: "manual_search",
@@ -678,6 +782,7 @@ export function SearchControls() {
         if (runId) {
           const nextRun: TrackedRun = {
             runId,
+            runKind: "adzuna_search",
             jobTitle: "Best Match",
             location: submittedLocation,
             searchMode: "profile_best_match",
@@ -715,6 +820,95 @@ export function SearchControls() {
       setError("Failed to find jobs. Please try again.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleImportUrl(): Promise<void> {
+    setError(null);
+
+    if (jobUrl.trim().length < 8) {
+      setError("Enter a complete job URL to import.");
+      return;
+    }
+
+    setIsImportingUrl(true);
+    const submittedUrl = jobUrl.trim();
+
+    try {
+      const response = await fetch("/api/agent/import-url", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url: submittedUrl,
+        }),
+      });
+
+      if (response.status === 401) {
+        await clearExpiredSession();
+        setError("Your session expired. Please sign in again.");
+        router.replace("/login?next=%2Ffind-jobs");
+        return;
+      }
+
+      const payload: unknown = await response.json();
+      const success =
+        typeof payload === "object" &&
+        payload !== null &&
+        "success" in payload &&
+        payload.success === true;
+
+      if (success) {
+        const data =
+          "data" in payload && typeof payload.data === "object" && payload.data !== null
+            ? payload.data
+            : null;
+        const runId = getRunId(data);
+        const providerLabel = getProviderLabel(data) ?? "URL";
+
+        if (runId) {
+          const nextRun: TrackedRun = {
+            runId,
+            runKind: "url_import",
+            jobTitle: "URL import",
+            location: "",
+            searchMode: "manual_search",
+            sourceUrl: submittedUrl,
+            providerLabel,
+            status: "initializing",
+            jobsFound: 0,
+            jobsSaved: 0,
+            strongMatches: 0,
+            startedAt: Date.now(),
+            completedAt: null,
+            statusMessage: null,
+          };
+
+          setTrackedRuns((current) => [
+            nextRun,
+            ...current.filter((run) => run.runId !== runId),
+          ].slice(0, MAX_TRACKED_RUNS));
+        }
+
+        setJobUrl("");
+        return;
+      }
+
+      const nextError =
+        typeof payload === "object" &&
+        payload !== null &&
+        "error" in payload &&
+        typeof payload.error === "string"
+          ? payload.error
+          : "Failed to import this job URL. Please try another public job page.";
+
+      setError(nextError);
+    } catch (requestError) {
+      console.error("[SearchControls] URL import request failed:", requestError);
+      setError("Failed to import this job URL. Please try another public job page.");
+    } finally {
+      setIsImportingUrl(false);
     }
   }
 
@@ -763,7 +957,7 @@ export function SearchControls() {
 
         <button
           className="inline-flex h-12 min-w-36 items-center justify-center gap-2 rounded-md bg-accent px-6 text-sm font-medium leading-5 text-accent-foreground shadow-sm hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-70"
-          disabled={isSubmitting}
+          disabled={isSubmitting || isImportingUrl}
           type="submit"
         >
           <SearchIcon className="h-5 w-5" />
@@ -772,7 +966,7 @@ export function SearchControls() {
 
         <button
           className="inline-flex h-12 min-w-36 items-center justify-center gap-2 rounded-md border border-border bg-surface px-6 text-sm font-medium leading-5 text-text-primary shadow-sm hover:bg-surface-secondary disabled:cursor-not-allowed disabled:opacity-70"
-          disabled={isSubmitting}
+          disabled={isSubmitting || isImportingUrl}
           onClick={handleBestMatch}
           type="button"
         >
@@ -780,6 +974,34 @@ export function SearchControls() {
           {isSubmitting ? "Starting..." : "Best Match"}
         </button>
       </form>
+
+      <div className="mt-5 grid gap-4 border-t border-border pt-5 lg:grid-cols-[1fr_auto] lg:items-end">
+        <label className="block">
+          <span className="text-xs font-semibold uppercase leading-4 tracking-wide text-text-dark">
+            Job URL
+          </span>
+          <span className="mt-2 flex h-12 items-center gap-3 rounded-md border border-border bg-surface px-4 text-text-muted shadow-sm">
+            <LinkIcon className="h-5 w-5 shrink-0" />
+            <input
+              className="h-full min-w-0 flex-1 bg-transparent text-sm font-medium leading-5 text-text-primary outline-none placeholder:text-text-muted"
+              onChange={(event) => setJobUrl(event.target.value)}
+              placeholder="https://www.jobstreet.com/..."
+              type="url"
+              value={jobUrl}
+            />
+          </span>
+        </label>
+
+        <button
+          className="inline-flex h-12 min-w-40 items-center justify-center gap-2 rounded-md border border-border bg-surface px-6 text-sm font-medium leading-5 text-text-primary shadow-sm hover:bg-surface-secondary disabled:cursor-not-allowed disabled:opacity-70"
+          disabled={isSubmitting || isImportingUrl}
+          onClick={handleImportUrl}
+          type="button"
+        >
+          <LinkIcon className="h-5 w-5" />
+          {isImportingUrl ? "Importing..." : "Import URL"}
+        </button>
+      </div>
 
       {error ? (
         <div
@@ -796,7 +1018,7 @@ export function SearchControls() {
           {trackedRuns.map((run) => {
             const tone = getRunTone(run);
             const canDismiss = isTerminalRun(run.status);
-            const canFilter = run.status === "completed";
+            const canFilter = run.status === "completed" && run.runKind !== "url_import";
             const isActive = canFilter && getCurrentRunFilters().includes(run.runId);
 
             return (

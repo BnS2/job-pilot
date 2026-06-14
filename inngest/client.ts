@@ -25,6 +25,13 @@ export type JobPilotInngestEvents = {
       mode?: "manual_search" | "profile_best_match";
     };
   };
+  "job-url-import.requested": {
+    data: {
+      runId: string;
+      url: string;
+      userId: string;
+    };
+  };
   "resume-extraction.requested": {
     data: {
       runId: string;

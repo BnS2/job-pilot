@@ -325,7 +325,7 @@ async function FindJobsResults({
   const insforge = await createInsforgeServer();
   let dbQuery = insforge.database
     .from("jobs")
-    .select("id,company,title,match_score,salary,source,found_at,status", { count: "exact" })
+    .select("id,company,title,match_score,salary,source,source_provider,found_at,status", { count: "exact" })
     .eq("user_id", userId);
 
   if (status !== "all") {

@@ -9,6 +9,7 @@ import {
   normalizeSalaryDisplay,
   type JobStatus,
 } from "@/lib/utils";
+import { getSourceProviderLabel } from "@/lib/job-source";
 
 type JobRecord = {
   id: string;
@@ -17,6 +18,7 @@ type JobRecord = {
   match_score: number | null;
   salary: string | null;
   source: "search" | "url" | null;
+  source_provider: string | null;
   found_at: string | null;
   status: string | null;
 };
@@ -48,12 +50,16 @@ function BuildingIcon({ className }: { className: string }) {
   );
 }
 
-function getSourceLabel(source: "search" | "url" | null): string {
-  if (source === null) {
-    return "Imported";
+function getSourceLabel(source: "search" | "url" | null, provider: string | null): string {
+  if (provider) {
+    return getSourceProviderLabel(provider);
   }
 
-  return source === "search" ? "Search" : "URL";
+  if (source === "search") {
+    return "Adzuna";
+  }
+
+  return source === "url" ? "URL" : "Imported";
 }
 
 function getSourceClass(source: "search" | "url" | null): string {
@@ -214,7 +220,7 @@ export function JobsTable({ jobs, page, pageSize, totalCount, status }: Props) {
                     <span
                       className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium leading-4 ${getSourceClass(job.source)}`}
                     >
-                      {getSourceLabel(job.source)}
+                      {getSourceLabel(job.source, job.source_provider)}
                     </span>
                   </td>
                   <td className="px-6 py-6">

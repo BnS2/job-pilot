@@ -31,3 +31,7 @@ export function requireServerEnv(name: ServerEnvName): string {
 
   return value;
 }
+
+export function getOptionalServerEnv(name: ServerEnvName): string | null {
+  return process.env[name] || null;
+}

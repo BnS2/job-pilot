@@ -7,7 +7,8 @@ type AgentRunType =
   | "company_research"
   | "availability_check"
   | "resume_extraction"
-  | "resume_generation";
+  | "resume_generation"
+  | "job_url_import";
 
 type AgentRunResult = Record<string, unknown>;
 
@@ -21,6 +22,37 @@ export async function startResumeGenerationRun(userId: string): Promise<string |
 
 export async function startAvailabilityCheckRun(userId: string): Promise<string | null> {
   return startProfileAgentRun(userId, "availability_check", "availability_check");
+}
+
+export async function startJobUrlImportRun(
+  userId: string,
+  url: string,
+): Promise<string | null> {
+  try {
+    const insforge = createInsforgeAdmin();
+    const { data, error } = await insforge.database
+      .from("agent_runs")
+      .insert([{
+        user_id: userId,
+        run_type: "job_url_import",
+        status: "running",
+        job_title_searched: url,
+        location_searched: null,
+        jobs_found: 0,
+      }])
+      .select("id")
+      .single();
+
+    if (error || !data?.id) {
+      console.error("[agent/logs] Failed to create URL import run:", error);
+      return null;
+    }
+
+    return data.id;
+  } catch (error) {
+    console.error("[agent/logs] System error creating URL import run:", error);
+    return null;
+  }
 }
 
 export async function startJobDiscoveryRun(
@@ -123,6 +155,7 @@ export async function completeAgentRunWithResult(
   userId: string,
   runId: string | null,
   result: AgentRunResult,
+  jobsFound?: number,
 ): Promise<void> {
   if (!runId) {
     return;
@@ -136,6 +169,7 @@ export async function completeAgentRunWithResult(
         status: "completed",
         result,
         error_message: null,
+        ...(typeof jobsFound === "number" ? { jobs_found: jobsFound } : {}),
         completed_at: new Date().toISOString(),
       })
       .eq("id", runId)
