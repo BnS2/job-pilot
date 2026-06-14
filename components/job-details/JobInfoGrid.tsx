@@ -1,5 +1,6 @@
 import { JobInfoCard } from "@/components/job-details/JobInfoCard";
 import { formatJobType, formatRelativeTime } from "@/components/job-details/jobDetailsFormatters";
+import { normalizeSalaryDisplay } from "@/lib/utils";
 
 type Props = {
   foundAt: string | null;
@@ -29,7 +30,7 @@ export function JobInfoGrid({ foundAt, jobType, location, salary }: Props) {
           }
           iconClassName="bg-success-lightest text-success"
           label="Salary Estimated"
-          value={salary || "-"}
+          value={normalizeSalaryDisplay(salary) || "-"}
         />
         <JobInfoCard
           icon={

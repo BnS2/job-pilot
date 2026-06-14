@@ -1,35 +1,82 @@
-import { renderToBuffer } from "@react-pdf/renderer";
-import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
-import { finishAgentRun, logAgentMessage, startResumeGenerationRun } from "@/agent/logs";
-import { generateResumeFromProfile } from "@/agent/resumeGenerator";
-import { createResumeDocument } from "@/app/api/resume/generate/ResumeDocument";
+import { failAgentRun, startResumeGenerationRun } from "@/agent/logs";
+import { inngest, inngestEventKey, isInngestDev } from "@/inngest/client";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import type { ProfileData } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
+function getMissingRuntimeConfig(): string[] {
+  const missing = ["GEMINI_API_KEY", "INSFORGE_API_KEY"].filter((name) => !process.env[name]);
+
+  if (!isInngestDev) {
+    if (!inngestEventKey) {
+      missing.push("INNGEST_EVENT_KEY");
+    }
+
+    if (!process.env.INNGEST_SIGNING_KEY) {
+      missing.push("INNGEST_SIGNING_KEY");
+    }
+  }
+
+  return missing;
+}
+
+type AuthenticatedUserResult = {
+  insforge: Awaited<ReturnType<typeof createInsforgeServer>>;
+  userId: string | null;
+  authUnavailable: boolean;
+};
+
+async function getAuthenticatedUser(): Promise<AuthenticatedUserResult> {
+  const insforge = await createInsforgeServer();
+  const { data: userData, error: userError } = await insforge.auth.getCurrentUser();
+
+  if (userError) {
+    console.error("[api/resume/generate] Auth lookup error:", userError);
+    return { insforge, userId: null, authUnavailable: true };
+  }
+
+  if (!userData.user) {
+    return { insforge, userId: null, authUnavailable: false };
+  }
+
+  return { insforge, userId: userData.user.id, authUnavailable: false };
+}
+
 export async function POST() {
-  let runId: string | null = null;
-  let userId: string | null = null;
-
   try {
-    const insforge = await createInsforgeServer();
-    const { data: userData, error: userError } = await insforge.auth.getCurrentUser();
+    const { insforge, userId, authUnavailable } = await getAuthenticatedUser();
 
-    if (userError || !userData.user) {
+    if (authUnavailable) {
       return NextResponse.json(
-        { success: false, error: "Unauthorized" },
+        { success: false, error: "Could not verify your session. Please try again." },
+        { status: 503 },
+      );
+    }
+
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: "Your session expired. Please sign in again." },
         { status: 401 },
       );
     }
 
-    userId = userData.user.id;
+    const missingRuntimeConfig = getMissingRuntimeConfig();
+    if (missingRuntimeConfig.length > 0) {
+      console.error(
+        "[api/resume/generate] Missing resume generation runtime config:",
+        missingRuntimeConfig.join(", "),
+      );
+      return NextResponse.json(
+        { success: false, error: "Resume generation is not configured yet." },
+        { status: 500 },
+      );
+    }
 
     const { data: profile, error: profileError } = await insforge.database
       .from("profiles")
-      .select("*")
+      .select("id")
       .eq("id", userId)
       .maybeSingle();
 
@@ -48,108 +95,41 @@ export async function POST() {
       );
     }
 
-    const profileData: ProfileData = profile;
-    runId = await startResumeGenerationRun(userId);
-    await logAgentMessage(userId, runId, "info", "Resume generation started from saved profile data.");
-
-    const generation = await generateResumeFromProfile(profileData, {
-      userId,
-      runId,
-    });
-
-    if (!generation.success) {
-      await finishAgentRun(userId, runId, "failed");
-
+    const runId = await startResumeGenerationRun(userId);
+    if (!runId) {
       return NextResponse.json(
-        { success: false, error: generation.error },
-        { status: generation.code === "temporary_unavailable" ? 503 : 400 },
-      );
-    }
-
-    const pdfBuffer = await renderToBuffer(
-      createResumeDocument({
-        profile: profileData,
-        resume: generation.resume,
-      }),
-    );
-    const resumeKey = `${userId}/resume.pdf`;
-
-    const pdfBlob = new Blob([new Uint8Array(pdfBuffer)], {
-      type: "application/pdf",
-    });
-    const { data: uploadData, error: uploadError } = await insforge.storage
-      .from("resumes")
-      .upload(resumeKey, pdfBlob);
-
-    if (uploadError || !uploadData) {
-      console.error("[api/resume/generate] Upload error:", uploadError);
-      await logAgentMessage(userId, runId, "error", "Generated resume PDF upload failed.");
-      await finishAgentRun(userId, runId, "failed");
-
-      return NextResponse.json(
-        { success: false, error: "Failed to upload generated resume" },
+        { success: false, error: "Could not start resume generation." },
         { status: 500 },
       );
     }
 
-    const { data: updatedProfile, error: updateError } = await insforge.database
-      .from("profiles")
-      .update({
-        resume_pdf_url: uploadData.url,
-        resume_pdf_key: uploadData.key,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", userId)
-      .select("resume_pdf_url, resume_pdf_key")
-      .maybeSingle();
-
-    if (updateError || !updatedProfile) {
-      console.error("[api/resume/generate] Profile update error:", updateError);
-      await logAgentMessage(userId, runId, "error", "Generated resume metadata update failed.");
-      await finishAgentRun(userId, runId, "failed");
-
+    try {
+      await inngest.send({
+        name: "resume-generation.requested",
+        data: { runId, userId },
+      });
+    } catch (error) {
+      console.error("[api/resume/generate] Failed to enqueue resume generation:", error);
+      await failAgentRun(
+        userId,
+        runId,
+        "Resume generation could not be started. Please try again.",
+      );
       return NextResponse.json(
-        { success: false, error: "Failed to update resume metadata" },
+        { success: false, error: "Could not start resume generation." },
         { status: 500 },
       );
-    }
-
-    await logAgentMessage(userId, runId, "success", "Resume PDF generated and saved.");
-    await finishAgentRun(userId, runId, "completed");
-    revalidatePath("/profile");
-
-    if (
-      profileData.resume_pdf_key &&
-      profileData.resume_pdf_key !== updatedProfile.resume_pdf_key
-    ) {
-      const { error: removeError } = await insforge.storage
-        .from("resumes")
-        .remove(profileData.resume_pdf_key);
-
-      if (removeError) {
-        console.error("[api/resume/generate] Previous resume removal error:", removeError);
-      }
     }
 
     return NextResponse.json({
       success: true,
       data: {
-        resumePdfUrl: updatedProfile.resume_pdf_url,
-        resumePdfKey: updatedProfile.resume_pdf_key,
+        runId,
+        status: "running",
       },
     });
   } catch (error) {
     console.error("[api/resume/generate] System error:", error);
-
-    if (userId) {
-      await logAgentMessage(
-        userId,
-        runId,
-        "error",
-        "Resume generation failed because of an unexpected system error.",
-      );
-      await finishAgentRun(userId, runId, "failed");
-    }
 
     return NextResponse.json(
       { success: false, error: "Internal server error" },

@@ -3,7 +3,6 @@ import { Suspense } from "react";
 
 import { AuthSessionGuard } from "@/components/auth/AuthSessionGuard";
 import { Navbar } from "@/components/layout/Navbar";
-import { CompletionIndicator } from "@/components/profile/CompletionIndicator";
 import { ProfileClient } from "@/components/profile/ProfileClient";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { calculateCompleteness } from "@/lib/utils";
@@ -20,10 +19,12 @@ export default async function ProfilePage() {
     <div className="min-h-screen bg-background">
       <AuthSessionGuard />
       <Navbar activePath="/profile" fullWidth showCta={false} />
-      <main className="mx-auto flex max-w-[920px] flex-col gap-8 px-4 py-8 sm:px-6">
-        <Suspense fallback={<ProfileSkeleton />}>
-          <ProfileContent email={data.user.email} userId={data.user.id} />
-        </Suspense>
+      <main className="mx-auto flex max-w-[1440px] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
+        <div className="flex w-full flex-col gap-6">
+          <Suspense fallback={<ProfileSkeleton />}>
+            <ProfileContent email={data.user.email} userId={data.user.id} />
+          </Suspense>
+        </div>
       </main>
     </div>
   );
@@ -112,12 +113,12 @@ async function ProfileContent({ email, userId }: ProfileContentProps) {
 
   return (
     <>
-      <CompletionIndicator
-        isComplete={profile.is_complete}
+      <ProfileClient
         completionPercentage={profile.completionPercentage}
+        isComplete={profile.is_complete}
         missingFields={profile.missingFields}
+        profile={profile}
       />
-      <ProfileClient profile={profile} />
     </>
   );
 }

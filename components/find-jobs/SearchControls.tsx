@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";
 
 import { clearExpiredSession } from "@/lib/auth-client";
+import { toast } from "@/lib/toast";
 
 const TRACKED_RUNS_STORAGE_KEY = "jobpilot.findJobs.trackedRuns";
 const MAX_TRACKED_RUNS = 4;
@@ -497,6 +498,18 @@ export function SearchControls() {
                       : item,
                   ),
                 );
+                const label = run.searchMode === "profile_best_match" ? "Best Match" : `"${run.jobTitle}"`;
+                if (status === "completed") {
+                  if (strongMatches > 0) {
+                    toast.success(`${label} found ${jobsFound} jobs, ${strongMatches} strong matches.`);
+                  } else if (jobsSaved > 0) {
+                    toast.info(`${label} found ${jobsFound} jobs, ${jobsSaved} saved.`);
+                  } else {
+                    toast.info(`${label} found ${jobsFound} jobs. None saved.`);
+                  }
+                } else {
+                  toast.error(`${label} failed. Please try again.`);
+                }
                 router.refresh();
               }
             }

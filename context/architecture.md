@@ -67,7 +67,10 @@
 ├── inngest/
 │   ├── client.ts                          → Inngest client instance
 │   └── functions/
-│       └── companyResearch.ts             → Company research background workflow
+│       ├── companyResearch.ts             → Company research background workflow
+│       ├── jobDiscovery.ts                → Job discovery background workflow
+│       ├── resumeExtraction.ts            → Resume extraction background workflow
+│       └── resumeGeneration.ts            → Resume generation background workflow
 ├── actions/
 │   ├── profile.ts                         → Profile save + update
 │   └── jobs.ts                            → Job status updates
@@ -211,26 +214,38 @@ Existing matching job rows are updated instead of duplicated
 Closed, expired, removed, or unreachable listings are marked unavailable
 ```
 
-### Resume Extraction (API Route)
+### Resume Extraction (API Route + Inngest)
 
 ```text
 User clicks Extract from Resume
         ↓
 API route in app/api/resume/extract
         ↓
+Validates auth/profile/resume, creates a typed agent_runs row, sends resume-extraction.requested
+        ↓
+Inngest downloads the private resume from InsForge Storage
+        ↓
 MarkItDown converts uploaded PDF to Markdown when available; pdf-parse is the fallback
         ↓
 Gemini 3.5 Flash extracts profile fields, with retry and Gemini Flash-Lite fallback for transient provider pressure
         ↓
-Structured fields return to the client for manual review
+Structured fields are saved to agent_runs.result
+        ↓
+Profile UI polls /api/resume/runs and populates draft form fields for manual review
 ```
 
-### Resume Generation (API Route)
+Resume extraction remains review-first. The worker never writes extracted fields to `profiles`; the user must review and click Save Profile.
+
+### Resume Generation (API Route + Inngest)
 
 ```text
 User clicks Generate Resume from Profile
         ↓
 API route in app/api/resume/generate
+        ↓
+Validates auth/profile, creates a typed agent_runs row, sends resume-generation.requested
+        ↓
+Inngest loads saved profile data
         ↓
 Gemini 3.5 Flash generates resume content
         ↓
@@ -239,6 +254,10 @@ Gemini 3.5 Flash generates resume content
 New PDF uploaded to InsForge Storage
         ↓
 URL saved to profiles table
+        ↓
+Resume metadata is saved to agent_runs.result
+        ↓
+Profile UI polls /api/resume/runs and updates the active resume card
 ```
 
 ---
@@ -282,9 +301,12 @@ URL saved to profiles table
 | id                 | uuid        |                              |
 | user_id            | uuid        | References profiles          |
 | status             | text        | running / completed / failed |
+| run_type           | text        | job_discovery / company_research / availability_check / resume_extraction / resume_generation |
 | job_title_searched | text        |                              |
 | location_searched  | text        |                              |
 | jobs_found         | integer     | Total jobs discovered        |
+| result             | jsonb       | Durable result payload for background flows such as resume draft fields or generated resume metadata |
+| error_message      | text        | Human-readable terminal failure message |
 | started_at         | timestamptz |                              |
 | completed_at       | timestamptz |                              |
 

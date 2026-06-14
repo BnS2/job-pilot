@@ -7,7 +7,7 @@ import { JobsTable } from "@/components/find-jobs/JobsTable";
 import { SearchControls } from "@/components/find-jobs/SearchControls";
 import { Navbar } from "@/components/layout/Navbar";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import { isJobStatus, type JobStatus } from "@/lib/utils";
+import { isJobStatus, MATCH_THRESHOLD, type JobStatus } from "@/lib/utils";
 
 export type SelectedSearchRun = {
   id: string;
@@ -245,7 +245,7 @@ export default async function FindJobsPage({ searchParams }: FindJobsPageProps) 
     <div className="min-h-screen bg-background">
       <AuthSessionGuard />
       <Navbar activePath="/find-jobs" fullWidth showCta={false} />
-      <main className="mx-auto flex max-w-[1440px] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-12">
+      <main className="mx-auto flex max-w-[1440px] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
         <SearchControls />
         <JobFilters
           key={status}
@@ -340,14 +340,15 @@ async function FindJobsResults({
     const andValue = qValues
       .map((term) => `or(title.ilike.%${term}%,company.ilike.%${term}%)`)
       .join(",");
+    // InsForge/PostgREST does not expose grouped `and=(or(...))`; this narrows the internal query URL.
     const params = (dbQuery as unknown as { url: URL }).url.searchParams;
     params.append("and", `(${andValue})`);
   }
 
   if (match === "high") {
-    dbQuery = dbQuery.gte("match_score", 70);
+    dbQuery = dbQuery.gte("match_score", MATCH_THRESHOLD);
   } else if (match === "low") {
-    dbQuery = dbQuery.lt("match_score", 70);
+    dbQuery = dbQuery.lt("match_score", MATCH_THRESHOLD);
   }
 
   if (sort === "match") {

@@ -1,25 +1,28 @@
 "use client";
 
-import Link from "next/link";
-
+import { MatchScoreMeter, getMatchScoreTone } from "@/components/MatchScoreMeter";
 import { useJobStatus } from "@/components/job-details/JobStatusProvider";
 import {
+  getJobStatusAccentClass,
   getJobStatusBadgeClass,
   getJobStatusLabel,
 } from "@/lib/utils";
 
 type Props = {
-  applyUrl: string | null;
   company: string;
   matchScore: number;
   title: string;
 };
 
-export function JobHeader({ applyUrl, company, matchScore, title }: Props) {
+export function JobHeader({ company, matchScore, title }: Props) {
   const { status } = useJobStatus();
+  const accentClass = getJobStatusAccentClass(status);
+  const matchTone = getMatchScoreTone(matchScore);
   return (
-    <section className="flex flex-col gap-5 rounded-xl border border-border bg-surface p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 items-center gap-4">
+    <section
+      className={`rounded-xl border border-border bg-surface p-6 shadow-sm sm:p-8 ${accentClass}`}
+    >
+      <div className="flex min-w-0 items-start gap-5">
         <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-secondary text-text-muted">
           <svg aria-hidden="true" className="h-8 w-8" fill="none" viewBox="0 0 24 24">
             <path
@@ -31,15 +34,17 @@ export function JobHeader({ applyUrl, company, matchScore, title }: Props) {
             />
           </svg>
         </span>
-        <div className="min-w-0">
-          <h1 className="truncate text-2xl font-semibold leading-8 text-text-primary">
+        <div className="min-w-0 flex-1">
+          <h1 className="max-w-3xl text-2xl font-semibold leading-9 text-text-primary sm:text-3xl sm:leading-10">
             {title}
           </h1>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm font-semibold leading-5 text-text-muted">
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-semibold leading-5 text-text-muted">
             <span>{company}</span>
             <span aria-hidden="true">&bull;</span>
-            <span className="rounded-full bg-success-lightest px-3 py-1 text-sm font-semibold leading-5 text-success-foreground">
-              {matchScore}% Match Score
+            <span
+              className={`rounded-full px-3 py-1 text-sm font-semibold leading-5 ${matchTone.badgeClass}`}
+            >
+              {matchScore}% {matchTone.label}
             </span>
             <span
               className={`rounded-full px-3 py-1 text-xs font-medium leading-4 ${getJobStatusBadgeClass(status)}`}
@@ -47,28 +52,11 @@ export function JobHeader({ applyUrl, company, matchScore, title }: Props) {
               {getJobStatusLabel(status)}
             </span>
           </div>
+          <div className="mt-6 max-w-md">
+            <MatchScoreMeter score={matchScore} size="full" />
+          </div>
         </div>
       </div>
-
-      {applyUrl ? (
-        <Link
-          className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-surface px-4 text-sm font-semibold leading-5 text-text-primary"
-          href={applyUrl}
-          rel="noreferrer"
-          target="_blank"
-        >
-          <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
-            <path
-              d="M14 5h5v5m0-5-8 8m-4-6H5.8c-.5 0-.8.3-.8.8v10.4c0 .5.3.8.8.8h10.4c.5 0 .8-.3.8-.8V17"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="1.8"
-            />
-          </svg>
-          View Job Post
-        </Link>
-      ) : null}
     </section>
   );
 }

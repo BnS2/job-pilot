@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
   companyResearchSchema,
   type CompanyResearchDossier,
 } from "@/lib/company-research";
+import { toast } from "@/lib/toast";
 
 type ResearchStatus = "idle" | "running" | "completed" | "failed";
 
@@ -74,7 +75,40 @@ export function CompanyResearchCard({
     status === "running" ? Date.now() : null,
   );
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const isRunning = currentStatus === "running" && !currentDossier;
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [finalizingText, setFinalizingText] = useState("");
+  const isRunning = currentStatus === "running" && !currentDossier && !isFinalizing;
+  const pollFailureCountRef = useRef(0);
+
+  const showResearchReadyToast = (): void => {
+    toast.statusChange({
+      variant: "completed",
+      title: "Company research ready",
+      subtitle: company,
+    });
+  };
+
+  const showResearchErrorToast = (errorMessage: string): void => {
+    toast.statusChange({
+      variant: "error",
+      title: errorMessage,
+      subtitle: company,
+    });
+  };
+
+  const handlePollFailure = (): void => {
+    pollFailureCountRef.current += 1;
+
+    if (pollFailureCountRef.current < 3) {
+      return;
+    }
+
+    pollFailureCountRef.current = 0;
+    const errorMsg = "Company research is still running, but status updates are not reachable.";
+    setCurrentStatus("failed");
+    setMessage(errorMsg);
+    showResearchErrorToast(errorMsg);
+  };
 
   useEffect(() => {
     if (!isRunning) {
@@ -90,12 +124,24 @@ export function CompanyResearchCard({
     };
   }, [isRunning]);
 
+  function getQuirkyFinalizeText(): string {
+    const texts = [
+      "Putting everything together for you...",
+      "Dusting off our detective hat one last time...",
+      "Organizing the intel into a tidy dossier...",
+      "Brewing the final summary fresh from the research pot...",
+    ];
+    return texts[Math.floor(Math.random() * texts.length)] ?? texts[0];
+  }
+
+  const cancelledRef = useRef(false);
+
   useEffect(() => {
     if (!isRunning) {
       return;
     }
 
-    let cancelled = false;
+    cancelledRef.current = false;
 
     const loadStatus = async (): Promise<void> => {
       try {
@@ -105,9 +151,12 @@ export function CompanyResearchCard({
         const json: unknown = await response.json();
         const data = isResearchApiResponse(json) ? json : {};
 
-        if (cancelled || data.success !== true) {
+        if (cancelledRef.current || data.success !== true) {
+          handlePollFailure();
           return;
         }
+
+        pollFailureCountRef.current = 0;
 
         if (
           data.status === "idle" ||
@@ -125,13 +174,22 @@ export function CompanyResearchCard({
         }
 
         const parsedDossier = companyResearchSchema.safeParse(data.data);
-        if (parsedDossier.success) {
-          setCurrentDossier(parsedDossier.data);
-          setCurrentStatus("completed");
-          setMessage("Research is ready.");
+        if (parsedDossier.success && !isFinalizing) {
+          setIsFinalizing(true);
+          setFinalizingText(getQuirkyFinalizeText());
+          window.setTimeout(() => {
+            setCurrentDossier(parsedDossier.data);
+            setCurrentStatus("completed");
+            setMessage("Research is ready.");
+            setIsFinalizing(false);
+            showResearchReadyToast();
+          }, 2000);
         }
       } catch (requestError) {
         console.error("[CompanyResearchCard] Research status request failed:", requestError);
+        if (!cancelledRef.current) {
+          handlePollFailure();
+        }
       }
     };
 
@@ -143,11 +201,13 @@ export function CompanyResearchCard({
     }, 2500);
 
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
       window.clearTimeout(startId);
       window.clearInterval(intervalId);
     };
-  }, [isRunning, jobId]);
+    // isFinalizing intentionally excluded — it triggers through state, not as a polling trigger
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRunning, jobId, company]);
 
   function getProgressStep(): number {
     if (!isRunning || !startedAt) {
@@ -179,9 +239,21 @@ export function CompanyResearchCard({
     return "Finalizing the briefing and source list.";
   }
 
+  const handleRerun = (): void => {
+    setCurrentDossier(null);
+    setCurrentStatus("running");
+    setMessage(null);
+    setIsFinalizing(false);
+    setFinalizingText("");
+    pollFailureCountRef.current = 0;
+    cancelledRef.current = false;
+    void handleResearch();
+  };
+
   const handleResearch = async (): Promise<void> => {
     setIsPending(true);
     setMessage(null);
+    pollFailureCountRef.current = 0;
 
     try {
       const response = await fetch("/api/agent/research", {
@@ -203,19 +275,22 @@ export function CompanyResearchCard({
           }
           setCurrentStatus("completed");
           setMessage("Research is ready.");
+          showResearchReadyToast();
         }
       } else {
         setCurrentStatus("failed");
-        setMessage(
-          typeof data.error === "string"
-            ? data.error
-            : "Company research could not be started.",
-        );
+        const errorMsg = typeof data.error === "string"
+          ? data.error
+          : "Company research could not be started.";
+        setMessage(errorMsg);
+        showResearchErrorToast(errorMsg);
       }
     } catch (requestError) {
       console.error("[CompanyResearchCard] Research request failed:", requestError);
       setCurrentStatus("failed");
-      setMessage("Company research could not be started.");
+      const errorMsg = "Company research could not be started.";
+      setMessage(errorMsg);
+      showResearchErrorToast(errorMsg);
     } finally {
       setIsPending(false);
     }
@@ -240,7 +315,36 @@ export function CompanyResearchCard({
             Company Research
           </h2>
         </div>
-        {!currentDossier ? (
+        {currentDossier ? (
+          <button
+            className={`inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-surface px-4 text-sm font-medium leading-5 transition-colors disabled:cursor-not-allowed ${
+              isPending || isRunning
+                ? "text-text-muted"
+                : "text-text-primary hover:bg-surface-secondary hover:border-text-secondary"
+            }`}
+            disabled={isPending || isRunning}
+            onClick={handleRerun}
+            type="button"
+          >
+            <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+              <path
+                d="M1 4v6h6M23 20v-6h-6"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+              />
+              <path
+                d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+              />
+            </svg>
+            {isPending || isRunning ? "Re-running..." : "Re-run Research"}
+          </button>
+        ) : (
           <button
             className={`inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold leading-5 transition-colors disabled:cursor-not-allowed ${
               isPending || isRunning
@@ -262,7 +366,7 @@ export function CompanyResearchCard({
             </svg>
             {isPending || isRunning ? "Researching..." : "Research Company"}
           </button>
-        ) : null}
+        )}
       </div>
 
       {currentDossier ? (
@@ -357,14 +461,16 @@ export function CompanyResearchCard({
             </svg>
           </span>
           <p className="mt-5 text-sm font-semibold leading-5 text-text-primary">
-            {isRunning ? "Research in progress" : "No research yet"}
+            {isRunning || isFinalizing ? "Research in progress" : "No research yet"}
           </p>
           <p className="mt-2 max-w-[340px] text-sm font-medium leading-5 text-text-muted">
-            {isRunning
-              ? getProgressMessage()
-              : `Company research for ${company} has not been generated yet.`}
+            {isFinalizing
+              ? finalizingText
+              : isRunning
+                ? getProgressMessage()
+                : `Company research for ${company} has not been generated yet.`}
           </p>
-          {isRunning ? (
+          {isRunning || isFinalizing ? (
             <div className="mt-6 grid w-full max-w-[480px] gap-3 sm:grid-cols-4">
               {[
                 "Discover",
@@ -373,7 +479,7 @@ export function CompanyResearchCard({
                 "Finalize",
               ].map((label, index) => {
                 const stepNumber = index + 1;
-                const isActive = getProgressStep() >= stepNumber;
+                const isActive = isFinalizing || getProgressStep() >= stepNumber;
 
                 return (
                   <div
@@ -395,6 +501,33 @@ export function CompanyResearchCard({
                   </div>
                 );
               })}
+            </div>
+          ) : null}
+          {isFinalizing ? (
+            <div className="mt-5 flex items-center gap-2">
+              <svg
+                aria-hidden="true"
+                className="h-4 w-4 animate-spin text-accent"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  fill="currentColor"
+                />
+              </svg>
+              <span className="text-xs font-medium leading-4 text-text-muted">
+                {finalizingText}
+              </span>
             </div>
           ) : null}
           {message ? (

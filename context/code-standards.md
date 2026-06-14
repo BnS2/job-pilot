@@ -313,9 +313,10 @@ The job match threshold is defined once as a constant. Never hardcode this value
 ```typescript
 // lib/utils.ts
 export const MATCH_THRESHOLD = 70;
+export const MATCH_STRONG_THRESHOLD = 85;
 ```
 
-Import and use `MATCH_THRESHOLD` everywhere this value is needed.
+Import and use `MATCH_THRESHOLD` everywhere the high/low match boundary is needed. Import and use `MATCH_STRONG_THRESHOLD` wherever the strong-match visual boundary is needed.
 
 ---
 

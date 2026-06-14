@@ -9,6 +9,7 @@ import { JobDetailsError } from "@/components/job-details/JobDetailsError";
 import { JobHeader } from "@/components/job-details/JobHeader";
 import { JobInfoGrid } from "@/components/job-details/JobInfoGrid";
 import { JobStatusProvider } from "@/components/job-details/JobStatusProvider";
+import { JobStatusToolbar } from "@/components/job-details/JobStatusToolbar";
 import {
   getApplyUrl,
   getSafeMatchScore,
@@ -117,10 +118,17 @@ export default async function JobDetailsPage({ params }: JobDetailsPageProps) {
       <AuthSessionGuard />
       <Navbar activePath="/find-jobs" fullWidth showCta={false} />
       <main className="mx-auto flex max-w-[840px] flex-col gap-6 px-4 py-10 sm:px-6">
-        <BackToJobsLink />
         <JobStatusProvider initialStatus={status}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <BackToJobsLink />
+            <JobStatusToolbar
+              applyUrl={applyUrl}
+              company={company}
+              jobId={details.id}
+              title={title}
+            />
+          </div>
           <JobHeader
-            applyUrl={applyUrl}
             company={company}
             matchScore={matchScore}
             title={title}
@@ -147,7 +155,6 @@ export default async function JobDetailsPage({ params }: JobDetailsPageProps) {
           <JobActions
             applyUrl={applyUrl}
             company={company}
-            jobId={details.id}
           />
         </JobStatusProvider>
       </main>

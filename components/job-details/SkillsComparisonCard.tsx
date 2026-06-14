@@ -36,7 +36,7 @@ export function SkillsComparisonCard({ matchedSkills, missingSkills }: Props) {
           {missingSkills.length > 0 ? (
             missingSkills.map((skill, index) => (
               <span
-                className="rounded-full bg-accent-muted px-3 py-1 text-xs font-medium leading-4 text-accent"
+                className="rounded-full bg-error/10 px-3 py-1 text-xs font-medium leading-4 text-error"
                 key={`${skill}-${index}`}
               >
                 x {skill}

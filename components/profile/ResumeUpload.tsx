@@ -1,10 +1,13 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import type { ChangeEvent, DragEvent } from "react";
+import { useRouter } from "next/navigation";
 
 import { deleteProfileResume, updateProfileResume } from "@/actions/profile";
+import { ResumePreview } from "@/components/profile/ResumePreview";
 import { insforge } from "@/lib/insforge-client";
+import { toast } from "@/lib/toast";
 import type { ProfileData } from "@/lib/utils";
 
 type Props = {
@@ -18,8 +21,10 @@ type Props = {
 type ExtractResumeResponse =
   | {
       success: true;
-      data: ProfileData;
-      meta?: { textExtractor?: "markitdown" | "pdf-parse" };
+      data: {
+        runId: string;
+        status: "running";
+      };
     }
   | { success: false; error: string };
 
@@ -27,11 +32,127 @@ type GenerateResumeResponse =
   | {
       success: true;
       data: {
-        resumePdfUrl: string;
-        resumePdfKey: string;
+        runId: string;
+        status: "running";
       };
     }
   | { success: false; error: string };
+
+type ActiveResumeRun = {
+  runId: string;
+  type: "extraction" | "generation";
+};
+
+type ResumeRunStatusResponse =
+  | {
+      success: true;
+      data: {
+        runId: string;
+        runType: "resume_extraction" | "resume_generation";
+        status: "running" | "completed" | "failed";
+        completedAt: string | null;
+        errorMessage: string | null;
+        result:
+          | {
+              profile: ProfileData;
+              textExtractor: "markitdown" | "pdf-parse";
+            }
+          | {
+              resumePdfUrl: string;
+              resumePdfKey: string;
+            }
+          | null;
+      };
+    }
+  | { success: false; error: string };
+
+function getMutationErrorMessage(
+  fallback: string,
+  result: ExtractResumeResponse | GenerateResumeResponse,
+): string {
+  return result.success ? fallback : result.error;
+}
+
+function getResumeRunError(result: ResumeRunStatusResponse): string {
+  return result.success
+    ? result.data.errorMessage ?? "Resume job failed. Please try again."
+    : result.error;
+}
+
+function isExtractionResult(
+  result: unknown,
+): result is { profile: ProfileData; textExtractor: "markitdown" | "pdf-parse" } {
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    "profile" in result &&
+    typeof result.profile === "object" &&
+    result.profile !== null
+  );
+}
+
+function isGenerationResult(
+  result: unknown,
+): result is { resumePdfUrl: string; resumePdfKey: string } {
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    "resumePdfUrl" in result &&
+    typeof result.resumePdfUrl === "string" &&
+    "resumePdfKey" in result &&
+    typeof result.resumePdfKey === "string"
+  );
+}
+
+function isRunStatusResponse(value: unknown): value is ResumeRunStatusResponse {
+  if (typeof value !== "object" || value === null || !("success" in value)) {
+    return false;
+  }
+
+  if (value.success === false) {
+    return "error" in value && typeof value.error === "string";
+  }
+
+  if (value.success !== true || !("data" in value)) {
+    return false;
+  }
+
+  const data = value.data;
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "runId" in data &&
+    typeof data.runId === "string" &&
+    "runType" in data &&
+    (data.runType === "resume_extraction" || data.runType === "resume_generation") &&
+    "status" in data &&
+    (data.status === "running" || data.status === "completed" || data.status === "failed")
+  );
+}
+
+function isStartResponse(value: unknown): value is ExtractResumeResponse | GenerateResumeResponse {
+  if (typeof value !== "object" || value === null || !("success" in value)) {
+    return false;
+  }
+
+  if (value.success === false) {
+    return "error" in value && typeof value.error === "string";
+  }
+
+  if (value.success !== true || !("data" in value)) {
+    return false;
+  }
+
+  const data = value.data;
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "runId" in data &&
+    typeof data.runId === "string" &&
+    "status" in data &&
+    data.status === "running"
+  );
+}
 
 export function ResumeUpload({
   userId,
@@ -40,14 +161,143 @@ export function ResumeUpload({
   onExtractedProfile,
   onResumeMetadataChange,
 }: Props) {
+  const router = useRouter();
   const [isDragging, setIsDragging] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [extractStatus, setExtractStatus] = useState<{ success: boolean; message: string } | null>(null);
   const [generateStatus, setGenerateStatus] = useState<{ success: boolean; message: string } | null>(null);
+  const [activeResumeRun, setActiveResumeRun] = useState<ActiveResumeRun | null>(null);
+  const [previewPreference, setPreviewPreference] = useState<"open" | "closed">("open");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isPending, startTransition] = useTransition();
-  const [isExtracting, startExtractionTransition] = useTransition();
-  const [isGenerating, startGenerationTransition] = useTransition();
+  const [isExtractStartPending, startExtractionTransition] = useTransition();
+  const [isGenerateStartPending, startGenerationTransition] = useTransition();
+  const isExtracting = isExtractStartPending || activeResumeRun?.type === "extraction";
+  const isGenerating = isGenerateStartPending || activeResumeRun?.type === "generation";
+  const isPreviewOpen = Boolean(resumePdfUrl) && previewPreference === "open";
+
+  useEffect(() => {
+    if (!activeResumeRun) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadStatus = async (): Promise<void> => {
+      try {
+        const response = await fetch(
+          `/api/resume/runs?runId=${encodeURIComponent(activeResumeRun.runId)}`,
+        );
+
+        if (response.status === 401 || response.status === 503) {
+          if (!cancelled) {
+            const message =
+              activeResumeRun.type === "extraction"
+                ? "We could not verify extraction status. Checking again in a moment."
+                : "We could not verify generation status. Checking again in a moment.";
+
+            if (activeResumeRun.type === "extraction") {
+              setExtractStatus({ success: true, message });
+            } else {
+              setGenerateStatus({ success: true, message });
+            }
+          }
+          return;
+        }
+
+        const json: unknown = await response.json();
+        const result: ResumeRunStatusResponse = isRunStatusResponse(json)
+          ? json
+          : { success: false, error: "Could not load resume job status." };
+
+        if (cancelled) {
+          return;
+        }
+
+        if (!response.ok || !result.success) {
+          if (response.status < 500) {
+            const message =
+              activeResumeRun.type === "extraction"
+                ? "Could not load resume extraction status."
+                : "Could not load resume generation status.";
+
+            if (activeResumeRun.type === "extraction") {
+              setExtractStatus({ success: false, message });
+            } else {
+              setGenerateStatus({ success: false, message });
+            }
+            toast.error(message);
+            setActiveResumeRun(null);
+          }
+          return;
+        }
+
+        if (result.data.status === "running") {
+          return;
+        }
+
+        if (result.data.status === "failed") {
+          const message = getResumeRunError(result);
+
+          if (activeResumeRun.type === "extraction") {
+            setExtractStatus({ success: false, message });
+          } else {
+            setGenerateStatus({ success: false, message });
+          }
+          toast.error(message);
+          setActiveResumeRun(null);
+          return;
+        }
+
+        if (activeResumeRun.type === "extraction") {
+          if (isExtractionResult(result.data.result)) {
+            onExtractedProfile(result.data.result.profile);
+            setExtractStatus({
+              success: true,
+              message: "Profile fields populated. Review them before saving.",
+            });
+            toast.success("Profile fields populated from resume. Review before saving.");
+          } else {
+            const message = "Resume extraction finished without profile fields.";
+            setExtractStatus({ success: false, message });
+            toast.error(message);
+          }
+        } else if (isGenerationResult(result.data.result)) {
+          onResumeMetadataChange(
+            result.data.result.resumePdfUrl,
+            result.data.result.resumePdfKey,
+          );
+          setGenerateStatus({
+            success: true,
+            message: "Resume generated from your saved profile.",
+          });
+          toast.success("Resume generated from your saved profile.");
+          router.refresh();
+        } else {
+          const message = "Resume generation finished without resume metadata.";
+          setGenerateStatus({ success: false, message });
+          toast.error(message);
+        }
+
+        setActiveResumeRun(null);
+      } catch (error) {
+        console.error("[components/profile/ResumeUpload] Resume run status error:", error);
+      }
+    };
+
+    const startId = window.setTimeout(() => {
+      void loadStatus();
+    }, 0);
+    const intervalId = window.setInterval(() => {
+      void loadStatus();
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(startId);
+      window.clearInterval(intervalId);
+    };
+  }, [activeResumeRun, onExtractedProfile, onResumeMetadataChange, router]);
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>): void => {
     e.preventDefault();
@@ -64,6 +314,7 @@ export function ResumeUpload({
     setUploadError(null);
     setExtractStatus(null);
     setGenerateStatus(null);
+    setActiveResumeRun(null);
 
     const file = e.dataTransfer.files[0];
     if (file) {
@@ -75,6 +326,7 @@ export function ResumeUpload({
     setUploadError(null);
     setExtractStatus(null);
     setGenerateStatus(null);
+    setActiveResumeRun(null);
     const file = e.target.files?.[0];
     if (file) {
       void processFile(file);
@@ -106,6 +358,7 @@ export function ResumeUpload({
         if (error || !data) {
           console.error("[components/profile/ResumeUpload] Upload error:", error);
           setUploadError("Failed to upload file to storage. Please try again.");
+          toast.error("Failed to upload resume. Please try again.");
           return;
         }
 
@@ -122,13 +375,17 @@ export function ResumeUpload({
           }
 
           setUploadError(result.error || "Failed to update profile resume reference.");
+          toast.error("Failed to save resume reference.");
           return;
         }
 
         onResumeMetadataChange(data.url, data.key);
+        setPreviewPreference("open");
+        toast.success("Resume uploaded successfully.");
       } catch (err) {
         console.error("[components/profile/ResumeUpload] System error:", err);
         setUploadError("An unexpected error occurred during upload.");
+        toast.error("An unexpected error occurred during upload.");
       }
     });
   };
@@ -137,18 +394,23 @@ export function ResumeUpload({
     setUploadError(null);
     setExtractStatus(null);
     setGenerateStatus(null);
+    setActiveResumeRun(null);
     startTransition(async () => {
       try {
         const result = await deleteProfileResume();
         if (!result.success) {
           setUploadError(result.error || "Failed to delete resume.");
+          toast.error("Failed to delete resume.");
           return;
         }
 
         onResumeMetadataChange(null, null);
+        setPreviewPreference("closed");
+        toast.success("Resume deleted.");
       } catch (err) {
         console.error("[components/profile/ResumeUpload] Delete error:", err);
         setUploadError("An unexpected error occurred during deletion.");
+        toast.error("An unexpected error occurred during deletion.");
       }
     });
   };
@@ -163,27 +425,34 @@ export function ResumeUpload({
         const response = await fetch("/api/resume/extract", {
           method: "POST",
         });
-        const result = (await response.json()) as ExtractResumeResponse;
+        const json: unknown = await response.json();
+        const result: ExtractResumeResponse = isStartResponse(json)
+          ? json
+          : { success: false, error: "Could not extract profile details." };
 
         if (!response.ok || !result.success) {
+          const message = getMutationErrorMessage("Could not extract profile details.", result);
           setExtractStatus({
             success: false,
-            message: result.success ? "Could not extract profile details." : result.error,
+            message,
           });
+          toast.error(message);
           return;
         }
 
-        onExtractedProfile(result.data);
+        setActiveResumeRun({ runId: result.data.runId, type: "extraction" });
         setExtractStatus({
           success: true,
-          message: "Profile fields populated. Review them before saving.",
+          message: "Reading your resume and preparing editable profile fields.",
         });
+        toast.info("Resume extraction started. We'll fill the form when it's ready.");
       } catch (error) {
         console.error("[components/profile/ResumeUpload] Extract error:", error);
         setExtractStatus({
           success: false,
           message: "An unexpected error occurred during extraction.",
         });
+        toast.error("Could not extract profile details.");
       }
     });
   };
@@ -198,27 +467,34 @@ export function ResumeUpload({
         const response = await fetch("/api/resume/generate", {
           method: "POST",
         });
-        const result = (await response.json()) as GenerateResumeResponse;
+        const json: unknown = await response.json();
+        const result: GenerateResumeResponse = isStartResponse(json)
+          ? json
+          : { success: false, error: "Could not generate resume." };
 
         if (!response.ok || !result.success) {
+          const message = getMutationErrorMessage("Could not generate resume.", result);
           setGenerateStatus({
             success: false,
-            message: result.success ? "Could not generate resume." : result.error,
+            message,
           });
+          toast.error(message);
           return;
         }
 
-        onResumeMetadataChange(result.data.resumePdfUrl, result.data.resumePdfKey);
+        setActiveResumeRun({ runId: result.data.runId, type: "generation" });
         setGenerateStatus({
           success: true,
-          message: "Resume generated from your saved profile.",
+          message: "Writing and rendering your resume in the background.",
         });
+        toast.info("Resume generation started. We'll update your resume when it's ready.");
       } catch (error) {
         console.error("[components/profile/ResumeUpload] Generate error:", error);
         setGenerateStatus({
           success: false,
           message: "An unexpected error occurred during resume generation.",
         });
+        toast.error("Could not generate resume.");
       }
     });
   };
@@ -261,48 +537,83 @@ export function ResumeUpload({
       )}
 
       {resumePdfUrl ? (
-        /* Uploaded State */
-        <div className="mt-6 flex flex-col items-center justify-between rounded-xl border border-border bg-surface-secondary p-5 sm:flex-row">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface text-accent shadow-sm">
-              <svg
-                aria-hidden="true"
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+        <>
+          {/* Uploaded State */}
+          <div className="mt-6 flex flex-col items-start justify-between gap-4 rounded-xl border border-border bg-surface-secondary p-5 sm:flex-row sm:items-center xl:flex-col xl:items-start">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface text-accent shadow-sm">
+                <svg
+                  aria-hidden="true"
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                  />
+                </svg>
+              </div>
+              <div>
+                <a
+                  href="/api/profile/resume"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm font-semibold leading-5 text-text-primary hover:underline"
+                >
+                  resume.pdf
+                </a>
+                <p className="text-xs font-medium leading-4 text-text-muted">
+                  {resumePdfKey ? "PDF Document • Ready for tailoring" : "PDF Document"}
+                </p>
+              </div>
+            </div>
+            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row xl:w-full xl:flex-col">
+              <button
+                type="button"
+                onClick={() =>
+                  setPreviewPreference((current) =>
+                    current === "open" ? "closed" : "open",
+                  )
+                }
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-surface px-4 text-sm font-medium leading-5 text-text-primary shadow-sm transition-colors hover:bg-surface-secondary"
               >
-                <path
+                <svg
+                  aria-hidden="true"
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth="2"
-                  d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
-                />
-              </svg>
-            </div>
-            <div>
-              <a
-                href="/api/profile/resume"
-                target="_blank"
-                rel="noreferrer"
-                className="text-sm font-semibold leading-5 text-text-primary hover:underline"
+                >
+                  <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                {isPreviewOpen ? "Hide Preview" : "Preview"}
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={isPending || isExtracting || isGenerating}
+                className="h-10 rounded-md border border-error/20 bg-surface px-4 text-sm font-medium leading-5 text-error hover:bg-error/5 disabled:opacity-50"
               >
-                resume.pdf
-              </a>
-              <p className="text-xs font-medium leading-4 text-text-muted">
-                {resumePdfKey ? "PDF Document • Ready for tailoring" : "PDF Document"}
-              </p>
+                {isPending ? "Deleting..." : "Delete"}
+              </button>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={isPending || isExtracting || isGenerating}
-            className="mt-4 w-full rounded-md border border-error/20 bg-surface px-4 py-2 text-sm font-medium leading-5 text-error hover:bg-error/5 disabled:opacity-50 sm:mt-0 sm:w-auto"
-          >
-            {isPending ? "Deleting..." : "Delete"}
-          </button>
-        </div>
+
+          {isPreviewOpen && (
+            <ResumePreview
+              resumePdfKey={resumePdfKey}
+              resumePdfUrl={resumePdfUrl}
+            />
+          )}
+        </>
       ) : (
         /* Dropzone / Upload State */
         <div
@@ -362,13 +673,13 @@ export function ResumeUpload({
       )}
 
       <div className="mt-6 border-t border-border pt-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <p className="max-w-xl text-sm font-medium leading-5 text-text-secondary">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm font-medium leading-5 text-text-secondary">
           {resumePdfUrl
             ? "Use the active PDF to populate fields, or generate a fresh resume from saved profile data."
             : "Upload a resume to extract details, or generate one after saving profile data."}
           </p>
-          <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
+          <div className="flex flex-col gap-3 sm:flex-row xl:flex-col">
           <button
             type="button"
             onClick={handleGenerate}

@@ -414,6 +414,7 @@ const result = matchSchema.parse(JSON.parse(response.text ?? "{}"));
 - For job matching, retry transient Gemini errors and malformed or empty structured JSON before falling back from `GEMINI_TEXT_MODEL` to `GEMINI_FAST_MODEL`
 - For resume extraction, resume generation, and company research synthesis, retry transient Gemini errors and fall back from `GEMINI_TEXT_MODEL` to `GEMINI_FAST_MODEL` before returning a temporary-service error
 - Match threshold is always `MATCH_THRESHOLD` from `lib/utils.ts` — never hardcode 70
+- Strong match visual threshold is always `MATCH_STRONG_THRESHOLD` from `lib/utils.ts` — never hardcode 85
 - Company research synthesis must always return a complete dossier — never return empty even if web research failed
 
 ---

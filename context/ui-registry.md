@@ -18,6 +18,26 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Protected Page Shell
+
+File: `app/dashboard/page.tsx`, `app/find-jobs/page.tsx`, `app/profile/page.tsx`
+Last updated: 2026-06-14
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-background` on the page root                                      |
+| Border           | none                                                                  |
+| Border radius    | none                                                                  |
+| Text — primary   | page sections define their own typography                             |
+| Text — secondary | page sections define their own typography                             |
+| Spacing          | `mx-auto flex max-w-[1440px] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8` |
+| Hover state      | none                                                                  |
+| Shadow           | none                                                                  |
+| Accent usage     | none                                                                  |
+
+**Pattern notes:**
+Protected top-level pages use the same wide app shell so Dashboard, Find Jobs, and Profile share consistent page padding and vertical rhythm. Profile content uses the full protected page width instead of a narrow inner form column so cards align with the wider app surfaces. Use `Navbar` with `fullWidth` on these pages so the nav inner row shares the same centered `max-w-[1440px] px-4 sm:px-6 lg:px-8` app shell instead of stretching controls to the viewport edges.
+
 ### Navbar
 
 File: `components/layout/Navbar.tsx`
@@ -30,13 +50,13 @@ Last updated: 2026-06-12
 | Border radius    | `rounded-md` for the CTA button                                       |
 | Text — primary   | `text-text-dark` for inactive nav links, `text-accent` for active link |
 | Text — secondary | none                                                                  |
-| Spacing          | `h-16`, `px-4 sm:px-6`, `gap-8`, `gap-2`, `py-5`, icon `h-4 w-4`      |
+| Spacing          | `h-16`, default shell `max-w-[1110px] px-4 sm:px-6`, app shell `max-w-[1440px] px-4 sm:px-6 lg:px-8`, `gap-8`, `gap-2`, `py-5`, icon `h-4 w-4` |
 | Hover state      | none                                                                  |
 | Shadow           | none                                                                  |
 | Accent usage     | `bg-overlay text-accent-foreground` for CTA, `text-accent` for active link |
 
 **Pattern notes:**
-The top nav can render with either a centered `max-w-[1110px]` inner row or a full-width app layout. Logo uses the public `logo.png` asset and loads eagerly because it can be the above-the-fold LCP image. Current implementation supports hiding the CTA for authenticated app pages. Nav links use small token-colored line icons and the active state is color-only, matching `ui-rules.md`. Active nav links expose `aria-current="page"` for assistive technology. Protected app nav links disable Next.js prefetch so login/public pages do not background-render protected routes while auth state is uncertain.
+The top nav can render with either a centered `max-w-[1110px]` marketing/auth inner row or a centered `max-w-[1440px]` authenticated app shell when `fullWidth` is true. The app shell intentionally does not stretch controls to the viewport edges; it aligns with protected page padding so navigation stays reachable and visually connected to the working area. Logo uses the public `logo.png` asset and loads eagerly because it can be the above-the-fold LCP image. Current implementation supports hiding the CTA for authenticated app pages. Nav links use small token-colored line icons and the active state is color-only, matching `ui-rules.md`. Active nav links expose `aria-current="page"` for assistive technology. Protected app nav links disable Next.js prefetch so login/public pages do not background-render protected routes while auth state is uncertain.
 
 ### Footer
 
@@ -301,27 +321,27 @@ Accepts dynamic completeness props. Renders a warning style (error theme) with m
 ### Resume Upload
 
 File: `components/profile/ResumeUpload.tsx`
-Last updated: 2026-06-12
+Last updated: 2026-06-14
 
 | Property         | Class                                                                 |
 | ---------------- | --------------------------------------------------------------------- |
-| Background       | `bg-surface`, `bg-surface-secondary` for upload zone                  |
-| Border           | `border border-border`, `border-dashed border-border-muted`           |
-| Border radius    | `rounded-xl` for card and drop zone, `rounded-md` for buttons         |
+| Background       | `bg-surface`, `bg-surface-secondary` for upload zone, uploaded row, preview toolbar, and preview canvas shell |
+| Border           | `border border-border`, `border-dashed border-border-muted`, preview `border-b border-border` |
+| Border radius    | `rounded-xl` for card, drop zone, and preview panel; `rounded-md` for buttons and canvas |
 | Text — primary   | `text-text-primary`                                                   |
 | Text — secondary | `text-text-secondary`                                                 |
-| Spacing          | `p-6`, `mt-1`, `mt-4`, `mt-6`, `px-4 py-8`, `gap-2`, `gap-3`, `gap-4`, `pt-6`, action buttons `h-10 min-w-40 px-4`, upload icon well `h-14 w-14`, upload icon `h-8 w-8` |
+| Spacing          | `p-6`, `p-5`, `mt-1`, `mt-4`, `mt-6`, `px-4 py-3`, `px-4 py-8`, `gap-2`, `gap-3`, `gap-4`, `pt-6`, action buttons `h-10 min-w-40 px-4`, upload icon well `h-14 w-14`, upload icon `h-8 w-8` |
 | Hover state      | `hover:bg-surface-secondary`, `hover:bg-error/5`, `hover:bg-accent-dark` |
 | Shadow           | `shadow-sm`                                                           |
 | Accent usage     | `text-accent` upload icon, `bg-accent text-accent-foreground` extraction CTA |
 
 **Pattern notes:**
-Resume upload uses client-side file upload flow via the InsForge browser SDK. Renders as a bordered drag-and-drop dropzone with file validation (PDF only, <= 5MB) when no resume is uploaded. Dropzone icon is a token-colored cloud outline with a separate upward arrow inside a circular white icon well; keep the glyph large enough that it does not collapse into an umbrella-like mark. Swaps to a success card styling when a resume exists, displaying the filename as a link and a "Delete" button. Upload persists the returned storage `url` and `key`; failed metadata writes remove the just-uploaded object before surfacing the error. The visible filename opens `/api/profile/resume` so private storage objects are downloaded through an authenticated app route rather than a direct object URL. Delete clears both profile references only after storage deletion succeeds. The generation action is always available as a bordered secondary button and uses saved profile data. The extraction action appears only in the uploaded state and uses the accent primary button pattern. Footer actions render as a compact toolbar with matching height, no label wrapping, and side-by-side alignment only when there is enough horizontal space. Token-based success/error status banners appear above the resume card.
+Resume upload uses client-side file upload flow via the InsForge browser SDK. Renders as a bordered drag-and-drop dropzone with file validation (PDF only, <= 5MB) when no resume is uploaded. Dropzone icon is a token-colored cloud outline with a separate upward arrow inside a circular white icon well; keep the glyph large enough that it does not collapse into an umbrella-like mark. Swaps to an uploaded-card styling when a resume exists, displaying the filename link, a secondary Preview/Hide Preview toggle, and a token error-outline Delete button. The inline preview uses `ResumePreview`, which fetches `/api/profile/resume` with same-origin credentials and renders page 1 to a canvas with PDF.js (`pdfjs-dist/webpack.mjs`) instead of relying on the browser's native PDF iframe viewer. This avoids blank previews and forced downloads when the user's browser is configured to download PDFs. The preview panel is wrapped in `rounded-xl border border-border bg-surface shadow-sm` with a neutral toolbar, loading/error states, page-count helper text, and an "Open full size" link. The preview is open by default for active resumes and after new uploads, but can be collapsed without losing the uploaded resume. Upload persists the returned storage `url` and `key`; failed metadata writes remove the just-uploaded object before surfacing the error. The visible filename and full-size link open `/api/profile/resume` so private storage objects are downloaded through an authenticated app route rather than a direct object URL. Delete clears both profile references only after storage deletion succeeds. Generate Resume and Extract from Resume start Inngest background jobs and poll `/api/resume/runs` every 2.5s, using inline token status banners plus bottom-right rich toasts for started/completed/failed states. Start-action failures toast the same human-readable server message shown inline, including session and configuration errors. Extraction remains draft-only: completed fields populate the profile form for review and require Save Profile before persistence. Generation completion updates the active resume metadata and refreshes `/profile`. The generation action is always available as a bordered secondary button and uses saved profile data. The extraction action appears only in the uploaded state and uses the accent primary button pattern. On wide Profile layouts this component lives in the right rail, so the uploaded-file row and footer actions stack vertically at `xl` to avoid cramped horizontal controls.
 
 ### Profile Client
 
 File: `components/profile/ProfileClient.tsx`
-Last updated: 2026-06-11
+Last updated: 2026-06-14
 
 | Property         | Class |
 | ---------------- | ----- |
@@ -330,13 +350,13 @@ Last updated: 2026-06-11
 | Border radius    | none  |
 | Text — primary   | none  |
 | Text — secondary | none  |
-| Spacing          | none  |
+| Spacing          | `grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]`, right rail `flex flex-col gap-6` |
 | Hover state      | none  |
 | Shadow           | none  |
 | Accent usage     | none  |
 
 **Pattern notes:**
-Profile Client is a state-only composition wrapper around `ResumeUpload` and `ProfileForm`. It owns draft profile state so resume extraction can populate the form without saving to InsForge. It renders no visual shell and must not introduce layout, color, or spacing classes; page layout remains owned by `/profile`.
+Profile Client owns the Profile page content layout and draft state. At `xl` widths, it renders `ProfileForm` as the main column and a right rail containing `CompletionIndicator` plus `ResumeUpload`; below `xl`, the rail appears above the form. It owns draft profile state so resume extraction can populate the form without saving to InsForge.
 
 ### Profile Form
 
@@ -361,7 +381,7 @@ Converted to Client Component to support state management for complex user input
 ### Job Details Sections
 
 File: `components/job-details/*`
-Last updated: 2026-06-13
+Last updated: 2026-06-14
 
 | Property         | Class                                                                 |
 | ---------------- | --------------------------------------------------------------------- |
@@ -373,15 +393,15 @@ Last updated: 2026-06-13
 | Spacing          | `p-6`, compact listing details `grid gap-5 sm:grid-cols-2`, icon wells `h-10 w-10`, `gap-2`, `gap-3`, `gap-4`, `gap-5`, `gap-6`, `mt-1`, `mt-2`, `mt-3`, `mt-4`, `mt-5`, `mt-6`, `mt-8`, `space-y-2`, `space-y-5` |
 | Hover state      | `hover:bg-surface-secondary`, `hover:border-text-secondary` on lifecycle secondary buttons |
 | Shadow           | `shadow-sm`                                                           |
-| Accent usage     | `bg-accent text-accent-foreground`, `bg-accent-muted text-accent`, `bg-success-lightest text-success-foreground` |
+| Accent usage     | `bg-accent text-accent-foreground`, `bg-accent-muted text-accent`, `bg-success-lightest text-success-foreground`, shared score meter thresholds |
 
 **Pattern notes:**
-Job Details is now composed from route-level data plus focused `components/job-details` presentation sections. Cards preserve the supplied design pattern: white surface, token border, 16px radius, 24px card padding, and small token-colored icon wells. Listing metadata renders as one `Listing details` card with a compact two-column details grid instead of four separate stat cards; values wrap with `break-words` so salary, location, job type, and date found stay readable without cramped truncation. Metadata labels use complete wording when space allows, such as `Salary Estimated` instead of `Salary Est.`. The lifecycle controls intentionally remain visible near Apply Now as Feature 12 integration; availability auto-refresh is invisible and calls the API route rather than importing agent logic into the page. CompanyResearchCard is a client component only for the trigger/polling behavior; it keeps the same section shell, uses a primary accent CTA for idle/retry states, a muted disabled treatment while running, border-top dividers for dossier sections, success-lightest skill tags for tech stack, and small accent source links with `break-all`.
+Job Details is now composed from route-level data plus focused `components/job-details` presentation sections. Cards preserve the supplied design pattern: white surface, token border, 16px radius, 24px card padding, and small token-colored icon wells. Listing metadata renders as one `Listing details` card with a compact two-column details grid instead of four separate stat cards; values wrap with `break-words` so salary, location, job type, and date found stay readable without cramped truncation. Metadata labels use complete wording when space allows, such as `Salary Estimated` instead of `Salary Est.`. The lifecycle controls intentionally remain visible near Apply Now as Feature 12 integration; availability auto-refresh is invisible and calls the API route rather than importing agent logic into the page. JobHeader keeps the score badge but now adds the shared MatchScoreMeter below the header metadata so the score is readable against low/good/strong thresholds. CompanyResearchCard is a client component only for the trigger/polling behavior; it keeps the same section shell, uses a primary accent CTA for idle/retry states, a muted disabled treatment while running, border-top dividers for dossier sections, success-lightest skill tags for tech stack, and small accent source links with `break-all`.
 
 ### Profile Page Shell
 
-File: `app/profile/page.tsx`
-Last updated: 2026-06-12
+File: `app/profile/page.tsx`, `components/profile/ProfileClient.tsx`
+Last updated: 2026-06-14
 
 | Property         | Class                                                                 |
 | ---------------- | --------------------------------------------------------------------- |
@@ -390,13 +410,13 @@ Last updated: 2026-06-12
 | Border radius    | none on page shell                                                    |
 | Text — primary   | inherited from child components                                       |
 | Text — secondary | inherited from child components                                       |
-| Spacing          | `min-h-screen`, `max-w-[920px]`, `gap-8`, `px-4 py-8 sm:px-6`         |
+| Spacing          | page shell `max-w-[1440px] px-4 py-8 sm:px-6 lg:px-8`, content grid `grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]` |
 | Hover state      | none                                                                  |
 | Shadow           | none                                                                  |
 | Accent usage     | delegated to child components                                         |
 
 **Pattern notes:**
-The profile page shell is a protected server-rendered app page that composes Navbar, CompletionIndicator, ResumeUpload, and ProfileForm. It fetches the profile data from the InsForge DB, computes completion metrics dynamically, and passes properties down.
+The profile page shell is a protected server-rendered app page that composes Navbar and ProfileClient. ProfileClient lays out the editable ProfileForm as the main column and places CompletionIndicator plus ResumeUpload in a right rail at `xl` widths. On smaller screens, the status/resume rail appears above the form. This keeps the page aligned to the full protected app canvas while preventing resume/status controls and form sections from feeling stretched across the whole viewport. The page fetches profile data from the InsForge DB, computes completion metrics dynamically, and passes properties down.
 
 ### Dashboard Auth Checkpoint
 
@@ -482,7 +502,7 @@ The toolbar handles filtering the retrieved jobs list through URL parameters bac
 ### Find Jobs Table
 
 File: `components/find-jobs/JobsTable.tsx`
-Last updated: 2026-06-12
+Last updated: 2026-06-14
 
 | Property         | Class                                                                 |
 | ---------------- | --------------------------------------------------------------------- |
@@ -491,20 +511,40 @@ Last updated: 2026-06-12
 | Border radius    | `rounded-xl` table shell, `rounded-md` icon wells, `rounded-full` badges/bars |
 | Text — primary   | `text-text-primary`, `text-text-dark`                                 |
 | Text — secondary | `text-text-secondary`                                                 |
-| Spacing          | `overflow-hidden`, table `min-w-[1280px]`, header `px-6/8 py-5`, rows `px-6/8 py-6`, icon wells `h-10 w-10`, score bar `h-1.5 w-32` |
+| Spacing          | `overflow-hidden`, table `min-w-[1280px]`, header `px-6/8 py-5`, rows `px-6/8 py-6`, icon wells `h-10 w-10`, score meter compact `w-40`, `gap-3` |
 | Hover state      | `hover:bg-surface-secondary` row hover, `hover:text-accent` for links |
 | Shadow           | `shadow-sm`                                                           |
-| Accent usage     | match fills `bg-success` (>=85), `bg-info-medium` (>=70), `bg-warning` (<70); source badges `bg-info-lightest text-info-foreground` and `bg-surface-secondary text-text-secondary`; status badges use shared lifecycle token classes |
+| Accent usage     | shared score meter thresholds; source badges `bg-info-lightest text-info-foreground` and `bg-surface-secondary text-text-secondary`; status badges use shared lifecycle token classes |
 
 **Pattern notes:**
-Renders real jobs queried from the database. Column parameters map `job.company` and `job.title` (as role), with user-safe fallback labels for nullable or drifted rows. Match score progress bar width is set dynamically via inline style after clamping the score to 0-100 and color-coded based on tone thresholds. Salary falls back to "Not specified". Source maps to Search or URL badge. Status uses shared lifecycle labels/classes from `lib/utils.ts`. Date Found uses a client/server-safe relative date formatter. Supports a status-aware full empty state row when search/filtering yields zero records.
+Renders real jobs queried from the database. Column parameters map `job.company` and `job.title` (as role), with user-safe fallback labels for nullable or drifted rows. Match score now uses the shared `MatchScoreMeter` so the compact table indicator shows a neutral track, actual percentage fill, `MATCH_THRESHOLD` / `MATCH_STRONG_THRESHOLD` ticks, the current score marker, and one short tone label (`Low`, `Good`, or `Strong`). The compact row must not repeat the threshold guide text because the percentage and ticks already carry that comparison. Salary falls back to "Not specified". Source maps to Search or URL badge. Status uses shared lifecycle labels/classes from `lib/utils.ts`. Date Found uses a client/server-safe relative date formatter. Supports a status-aware full empty state row when search/filtering yields zero records.
+
+### Match Score Meter
+
+File: `components/MatchScoreMeter.tsx`
+Last updated: 2026-06-14
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | neutral track `bg-border-light`, tick marks `bg-surface`              |
+| Border           | marker `border border-surface`                                        |
+| Border radius    | `rounded-full`                                                        |
+| Text — primary   | `text-success-foreground`, `text-info-foreground`, `text-text-secondary` for score label |
+| Text — secondary | none                                                                  |
+| Spacing          | compact `w-40`, full `w-full`, wrapper `h-4` / `h-5`, track `h-2` / `h-3`, helper `mt-1` |
+| Hover state      | none                                                                  |
+| Shadow           | `shadow-sm` on the score marker                                       |
+| Accent usage     | fill `bg-warning` under `MATCH_THRESHOLD`, `bg-info-medium` from `MATCH_THRESHOLD` to one below `MATCH_STRONG_THRESHOLD`, `bg-success` from `MATCH_STRONG_THRESHOLD` to 100 |
+
+**Pattern notes:**
+Shared visual meter for job match percentages. It clamps incoming scores to 0-100, exposes a keyboard-focusable `role="progressbar"` with ARIA values, keeps the track neutral so color only represents the actual filled score, shows subtle ticks at `MATCH_THRESHOLD` and `MATCH_STRONG_THRESHOLD`, and places a colored marker at the score position using `clamp()` so 0% and 100% remain visible instead of clipping. `getMatchScoreTone()` also supplies semantic badge colors: low scores use neutral styling, good scores use info, and strong scores use success. Both `size="compact"` and `size="full"` show only the short tone label (`Low`, `Good`, `Strong`) below the meter; do not repeat threshold legend copy beside the meter.
 
 Find Jobs search controls start a background Inngest run instead of blocking until Adzuna/Gemini finish. Each submitted term gets its own status row that names the search term and optional quoted location. Active rows show initializing/searching/scoring copy, completed rows summarize discovered jobs, saved jobs, and strong matches, and failed rows show a retryable error. Terminal rows stay visible until the user dismisses them with the icon button. Do not scope or clear the existing table while a run is processing, and do not disable the form after a run is enqueued; users can start more searches while earlier runs continue.
 
 ### Job Details Page
 
 File: `app/find-jobs/[id]/page.tsx`
-Last updated: 2026-06-13
+Last updated: 2026-06-14
 
 | Property         | Class                                                                 |
 | ---------------- | --------------------------------------------------------------------- |
@@ -513,20 +553,20 @@ Last updated: 2026-06-13
 | Border radius    | `rounded-xl` cards/icon well, `rounded-md` buttons, `rounded-full` badges/icon wells |
 | Text — primary   | `text-text-primary`, `text-text-dark`                                 |
 | Text — secondary | `text-text-secondary`, `text-text-muted`, action feedback `text-success-foreground` / `text-error` |
-| Spacing          | page `max-w-[840px] gap-6 px-4 py-10 sm:px-6`, cards `p-6`, listing details `mt-5 grid gap-5 sm:grid-cols-2`, empty state `px-6 py-12`, action feedback `gap-2` |
+| Spacing          | page `max-w-[840px] gap-6 px-4 py-10 sm:px-6`, top row `flex flex-wrap items-center justify-between gap-3`, cards `p-6`, listing details `mt-5 grid gap-5 sm:grid-cols-2`, empty state `px-6 py-12`, action feedback `gap-2` |
 | Hover state      | action buttons `hover:bg-surface-secondary hover:border-text-secondary` |
 | Shadow           | `shadow-sm`                                                           |
-| Accent usage     | `bg-accent text-accent-foreground` for Research/Apply CTAs, `bg-success-lightest text-success-foreground` match and skill badges, `bg-accent-muted text-accent` gap skills/status |
+| Accent usage     | `bg-accent text-accent-foreground` for Research/Apply CTAs, `bg-success-lightest text-success-foreground` match and skill badges, `bg-accent-muted text-error` rejected status badge, `bg-accent-muted text-accent` gap skills only |
 
 **Pattern notes:**
-The job details route follows `context/designs/job-details.png`: centered protected page, back link, summary card with company icon and View Job Post action, one readable Listing details card, AI match reasoning card, skills comparison card, job description card, company research empty state, and full-width Apply CTA. Lifecycle status is shown as a compact pill beside the match score. Status actions consolidated into a single `StatusDropdown` component — a bordered secondary button with dropdown arrow that shows available status transitions based on the current job status. The button label changes contextually (e.g., "Mark Applied" when active, "Restore Active" when archived). `CheckAvailabilityButton` appears only for active/unavailable jobs. Action feedback uses inline token-styled success/error text; do not use browser alerts for this workflow.
+The job details route follows `context/designs/job-details.png`: centered protected page, a wrapping top toolbar row with `BackToJobsLink` (left) and `JobStatusToolbar` (right, containing View Job Post, `StatusDropdown`, and conditional `AvailabilityIndicator`), summary card with company icon and a colored left-border accent strip per status, one readable Listing details card, AI match reasoning card, skills comparison card, job description card, company research empty state, and status-aware Apply CTA at the bottom. Lifecycle status is shown as a compact pill beside the match score. `StatusDropdown` renders a direct primary button with refresh icon when only one transition exists (e.g. rejected → Restore Active); multi-option statuses keep the dropdown. Action feedback uses inline token-styled success/error text that auto-dismisses after 3 seconds; do not use browser alerts for this workflow.
 
-Company research progress now stays inside the card instead of refreshing the whole route. The empty state uses the existing icon well, primary heading, muted support copy, and token progress bars for four stages: Discover, Read, Synthesize, Finalize. Active stages use `bg-accent text-accent`; inactive stages use `bg-border-light text-text-muted`. Status polling reads `/api/agent/research?jobId=...` and only updates the card state.
+Company research progress now stays inside the card instead of refreshing the whole route. The empty state uses the existing icon well, primary heading, muted support copy, and token progress bars for four stages: Discover, Read, Synthesize, Finalize. Active stages use `bg-accent text-accent`; inactive stages use `bg-border-light text-text-muted`. Status polling reads `/api/agent/research?jobId=...` and only updates the card state. Repeated polling failures are surfaced as a retryable card failure with a rich status toast instead of leaving the running state silently stuck.
 
 ### Status Dropdown
 
 File: `components/job-details/StatusDropdown.tsx`
-Last updated: 2026-06-13
+Last updated: 2026-06-14
 
 | Property         | Class                                                                 |
 | ---------------- | --------------------------------------------------------------------- |
@@ -534,14 +574,14 @@ Last updated: 2026-06-13
 | Border           | `border border-border` button and menu                                |
 | Border radius    | `rounded-md` button and menu                                          |
 | Text — primary   | `text-text-primary`                                                   |
-| Text — secondary | `text-text-muted` (pending state), `text-success-foreground` / `text-error` feedback |
+| Text — secondary | `text-text-muted` (pending state) |
 | Spacing          | `h-10`, gap-1.5, `px-4`, menu `py-1`, options `px-4 py-2`, icon `h-3.5 w-3.5` |
 | Hover state      | `hover:bg-surface-secondary hover:border-text-secondary` button, `hover:bg-surface-secondary` menu items |
 | Shadow           | `shadow-lg` on dropdown menu                                          |
 | Accent usage     | none (secondary button pattern)                                       |
 
 **Pattern notes:**
-Replaces 5-6 individual lifecycle buttons with one contextual dropdown. Button label reflects the most likely next action for the current status (e.g., "Mark Applied" for active jobs, "Restore Active" for archived). Clicking the button opens an absolutely-positioned dropdown menu listing all available transitions. Menu closes on outside click and on action selection. Uses `useTransition` for server-action feedback with inline token-styled success/error text. CheckAvailabilityButton is excluded — shown separately only for active/unavailable jobs.
+Multi-transition statuses (active, applied, unavailable) show the current status name as the button label with a caret (e.g., "Active ▾") instead of the first available action. Single-transition statuses (archived, rejected, completed) render a direct primary button with the action label and a refresh icon. Dropdown items list the available transitions with action labels (e.g., "Mark Applied", "Archive"). Clicking opens an absolutely-positioned dropdown menu listing all available transitions. Menu closes on outside click and on action selection. Uses `useTransition` for server-action feedback. All status-change feedback is delivered via `toast.statusChange()` rich toasts — each carries a colored icon (green check / amber warning / red X), descriptive title ("Marked as Applied"), and the job's company—title subtitle. Duration is slow (6s success, 7s info, 5s error) for visibility. Restore-active availability rechecks log failures with context before falling back to the restored toast. AvailabilityIndicator handles listing freshness separately — shown in the toolbar for active/unavailable jobs.
 
 ### Route Loading Skeletons
 
@@ -602,3 +642,181 @@ Last updated: 2026-06-13
 
 **Pattern notes:**
 Inline error states replace the content area (table, list, etc.) when a fetch or query fails. The card is centered horizontally and vertically with `flex flex-col items-center justify-center text-center`. The heading uses the standard `text-base font-semibold` card-heading pattern and the body uses `text-sm font-medium` with `max-w-md` to cap line length for readability. No icon or CTA is included — just a heading and one line of guidance copy. This pattern should be reused for any inline error, empty, or unavailable state that displaces a data region.
+
+### Job Header Summary
+
+File: `components/job-details/JobHeader.tsx`
+Last updated: 2026-06-14
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-surface`, company icon well `bg-surface-secondary`                |
+| Border           | `border border-border`, status accent strip from `getJobStatusAccentClass()` |
+| Border radius    | `rounded-xl` card and icon well, `rounded-full` badges                |
+| Text — primary   | `text-text-primary`                                                   |
+| Text — secondary | `text-text-muted`                                                     |
+| Spacing          | card `p-6 sm:p-8`, content `flex items-start gap-5`, metadata `mt-2 flex flex-wrap gap-x-3 gap-y-2`, meter `mt-6 max-w-md` |
+| Hover state      | none                                                                  |
+| Shadow           | `shadow-sm`                                                           |
+| Accent usage     | status accent strip only; score/status pills use semantic token helpers |
+
+**Pattern notes:**
+The header summary is a single content flow, not a two-column action layout. Keep external actions in `JobStatusToolbar` so long job titles have room to wrap. Job titles should not use `truncate`; use `max-w-3xl text-2xl sm:text-3xl leading-9 sm:leading-10` so the title can breathe while preserving the compact card hierarchy. Company, score badge, and status badge wrap together beneath the title.
+
+### Status Accent Card Border
+
+File: `components/job-details/JobHeader.tsx`
+Helper: `lib/utils.ts` → `getJobStatusAccentClass()`
+Last updated: 2026-06-13
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-surface` (unchanged from card token)                              |
+| Border (default) | `border border-border`                                                |
+| Border (applied) | `border-l-4 border-l-info`                                            |
+| Border (unavail) | `border-l-4 border-l-warning`                                         |
+| Border (archived)| `border-l-4 border-l-text-muted`                                      |
+| Border (rejected)| `border-l-4 border-l-error`                                          |
+| Border (completed)| `border-l-4 border-l-success`                                        |
+| Border radius    | `rounded-xl`                                                          |
+| Shadow           | `shadow-sm`                                                           |
+
+**Pattern notes:**
+Non-active job cards display a 4px left border accent (colored strip) alongside the standard card border. Active status returns an empty string (no accent). The accent class is appended to the card's `className` via `getJobStatusAccentClass(status)`. This gives an immediate visual cue that the job is in a terminal or paused state before the user even reads the status badge. Border override classes use project color tokens only.
+
+### Single-Action Primary Button (Restore)
+
+File: `components/job-details/StatusDropdown.tsx`
+Last updated: 2026-06-13
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-accent`                                                           |
+| Text             | `text-accent-foreground`                                              |
+| Border radius    | `rounded-md`                                                          |
+| Padding          | `px-4`, `h-10`                                                        |
+| Font             | `text-sm font-medium leading-5`                                       |
+| Hover state      | `hover:bg-accent-dark`                                                |
+| Disabled state   | `disabled:cursor-not-allowed disabled:opacity-50`                     |
+| Icon             | Refresh/undo SVG (16×16), `gap-1.5` from text                         |
+
+**Pattern notes:**
+When `STATUS_TRANSITIONS[status]` has exactly one entry (archived, rejected, completed → "Restore Active"), the component skips the dropdown and renders a direct primary button. The button includes a refresh icon, takes one click instead of two, and uses the project's primary button tokens. Multi-transition statuses (active, applied, unavailable) keep the existing secondary dropdown with chevron.
+
+### Job Status Toolbar
+
+File: `components/job-details/JobStatusToolbar.tsx`
+Last updated: 2026-06-14
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Layout           | `flex flex-wrap items-center justify-end gap-3`                       |
+| Background       | transparent (in a `flex justify-between` row with `BackToJobsLink`)   |
+| View job post    | `inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-border bg-surface px-4 text-sm font-semibold leading-5 text-text-primary transition-colors hover:border-text-secondary hover:bg-surface-secondary` |
+| Accent usage     | inherited from child `StatusDropdown` and `AvailabilityIndicator`    |
+
+**Pattern notes:**
+A thin client wrapper that reads `status` from `JobStatusProvider` context and renders the external View Job Post link, `StatusDropdown`, and conditional `AvailabilityIndicator` (only for `active`/`unavailable`). Used in the top toolbar row of the Job Details page alongside `BackToJobsLink`. This keeps status actions and the external listing CTA at eye level while keeping the header card focused on job identity and match context.
+
+### Availability Indicator
+
+File: `components/job-details/AvailabilityIndicator.tsx`
+Last updated: 2026-06-14
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-surface` button                                                   |
+| Border           | `border border-border` button, tooltip `border border-border`         |
+| Border radius    | `rounded-md` button, `rounded-xl` tooltip card                        |
+| Text — primary   | `text-text-primary` (tooltip heading)                                  |
+| Text — secondary | `text-text-secondary` (company-title row), `text-success-foreground` / `text-warning` / `text-error` (status descriptions) |
+| Text — muted     | `text-text-muted` (checked-time label)                                 |
+| Text — size      | tooltip heading `text-sm font-semibold leading-5`, details `text-xs leading-4` |
+| Spacing          | button `h-10 w-10`, tooltip shell `w-72 pt-2`, tooltip card `p-4`, `gap-3` |
+| Hover state      | `hover:-translate-y-px hover:bg-surface-secondary hover:shadow-md` button |
+| Focus / active   | `focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2`, `active:translate-y-0 active:shadow-sm` |
+| Shadow           | `shadow-sm` button, `shadow-lg` on tooltip                            |
+| Icon             | 20×20 inline SVGs (check-circle green, warning-triangle amber, x-circle red, spinner accent-animated, dot muted) |
+
+**Pattern notes:**
+Replaces the former `CheckAvailabilityButton` text button + toast pattern. Renders as a compact 40×40 icon button in the job details toolbar. Auto-checks listing availability quietly on mount (`force: false`, respects 2-hour server cooldown, 15-second client-side timeout): only the indicator icon changes to spinner/status, and the tooltip does not auto-open. The mount check is scheduled with a zero-delay callback, but the "already checked" ref is only set inside the callback so React Strict Mode cannot cancel the first check while leaving the component marked as checked. Click triggers a forced re-check (`force: true`). The button keeps the lightweight status-dot/status-icon UI and signals clickability through pointer affordance, lift/shadow hover, keyboard focus ring, and active press state rather than a secondary icon or instruction label. Hover reveals the rich tooltip (400ms show delay, 240ms hide delay) with: status heading ("Listing is active" / "Listing is unavailable" / "Check failed"), company and title on separate lines, contextual description, and relative "Checked X ago" timestamp. Tooltip spacing is part of the hoverable shell (`pt-2`) so crossing from the trigger into the card does not flicker. The tooltip should explain status only; do not add a boxed "click to recheck" note because it competes with the content and makes the compact control feel heavy. The title line uses `break-words` and wraps instead of truncating long job titles. Tooltip uses project token colors — green checkmark for active, amber warning for unavailable, red X for errors, muted dot for idle, accent-animated spinner for in-flight checks. Watches `status` from `JobStatusProvider` context via a separate effect to sync after external changes (e.g. StatusDropdown restore-active flow) without duplicate concurrent checks. Five icon states: idle (gray dot), checking (spinning arc), active (green check circle), unavailable (amber warning triangle), error (red X circle).
+
+### Job Details Apply CTA
+
+File: `components/job-details/JobActions.tsx`
+Last updated: 2026-06-13
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-accent` (active), `bg-surface` (applied/unavailable/no-link)      |
+| Border           | `border border-border` (non-active states only)                        |
+| Border radius    | `rounded-md`                                                          |
+| Text — primary   | `text-accent-foreground` (active), `text-text-muted` (non-active)     |
+| Text — size      | `text-sm font-semibold leading-5`                                     |
+| Spacing          | `h-12 px-6`                                                           |
+| Hover state      | none (active is a Link, non-active are static divs)                   |
+| Shadow           | none                                                                  |
+| Accent usage     | `bg-accent text-accent-foreground` for the "Apply Now" primary link   |
+
+**Pattern notes:**
+The apply CTA is status-aware via `getApplyCta()`:
+- `active` → full primary button link "Apply Now at {company}" (`bg-accent`)
+- `applied` → muted "Already Applied" static div (`bg-surface text-text-muted`)
+- `unavailable` → muted "Position Unavailable" static div
+- `archived` / `rejected` / `completed` → hidden entirely (`null`)
+- No apply URL → "Apply link unavailable" static div (unchanged)
+
+Non-active states use the secondary button shape (same `h-12 px-6 rounded-md`) but muted styling so the eye moves naturally to the status toolbar above.
+
+### Toast Notifications
+
+File: `lib/toast.tsx`, `app/layout.tsx`
+Last updated: 2026-06-14
+
+| Property         | Class / Config                                                                    |
+| ---------------- | --------------------------------------------------------------------------------- |
+| Library          | `sonner`                                                                          |
+| Position         | `bottom-right`                                                                    |
+| Max visible      | `3`                                                                               |
+| Gap              | `8px`                                                                             |
+| Offset           | `24px` desktop, `16px` mobile                                                     |
+| Wrapper          | `<Toaster>` in `app/layout.tsx`                                                  |
+| Helper           | `lib/toast.tsx` — exports `toast.success()`, `toast.error()`, `toast.info()`, `toast.statusChange()` |
+| Background       | success `var(--color-success-lightest)`, error `color-mix(in srgb, var(--color-error) 12%, var(--color-surface))`, info `var(--color-info-lightest)`, neutral `var(--color-surface)`, warning `color-mix(in srgb, var(--color-warning) 10%, var(--color-surface))` |
+| Border           | success `var(--color-success)`, error `var(--color-error)`, info `var(--color-info)`, neutral `var(--color-border)`, warning `var(--color-warning)` |
+| Text — primary   | `text-text-primary` for all toast titles/messages                                 |
+| Text — secondary | `text-text-secondary` for `statusChange` subtitles                                |
+| Border radius    | `border-radius: 8px`                                                              |
+| Padding          | `12px 16px`                                                                       |
+| Width            | `max-width: 360px`, `width: min(360px, calc(100vw - 32px))`                       |
+| Font             | `font-size: 14px`, `font-weight: 500`, `font-family: var(--font-sans)`            |
+| Shadow           | `0px 8px 24px color-mix(in srgb, var(--color-overlay) 14%, transparent)` plus a 4px inset tone stripe |
+| Icon             | `h-5 w-5` token-colored inline SVG status icon for every toast                    |
+| Duration         | success/info `3500ms`, error `5000ms`; statusChange success `6000ms`, info `7000ms`, error `5000ms` |
+
+**Pattern notes:**
+Toasts are purely additive — existing inline status cards, banners, and feedback text stay in place. The `lib/toast.tsx` wrapper centralizes project token styling so no component calls sonner directly. All toasts inherit the root `bottom-right` position from `app/layout.tsx`; individual toast helpers must not override placement. `toast.success()`, `toast.error()`, and `toast.info()` render compact rich JSX toasts with a token-colored icon, one primary message line that can wrap, and the same inset tone stripe used by status changes. `toast.statusChange()` uses the same shell plus an optional truncated subtitle. Icons: green check circle (generic success, applied/completed, company research ready), blue info circle (generic info), gray archive box with down arrow (archived), red slashed circle (rejected), blue refresh arrows (restored to active), amber warning triangle (restored — unavailable), red X circle (generic/status error). `CompanyResearchCard` fires `toast.statusChange()` after the 2-second finalize delay, using title `Company research ready`, the company name as subtitle, and the slower completed/status duration so it matches job lifecycle toast presence. `SearchControls` fires on run completion/failure. `StatusDropdown` uses `toast.statusChange()` for all transitions with the job's company—title subtitle. `ResumeUpload` fires alongside its existing inline messages. Listing availability feedback uses `AvailabilityIndicator` tooltip.
+
+### Badge & Chip Patterns
+
+File: `lib/utils.ts`, `components/job-details/*`
+Last updated: 2026-06-14
+
+All badges use the shared chip shape: `rounded-full px-3 py-1 text-xs font-medium leading-4`.
+
+| Variant        | Background             | Text                      | Where used                                |
+| -------------- | ---------------------- | ------------------------- | ----------------------------------------- |
+| Success / match | `bg-success-lightest` | `text-success-foreground` | matched skills, active status, match score |
+| Accent         | `bg-accent-muted`     | `text-accent`             | research icon well                         |
+| Error / gap    | `bg-error/10`         | `text-error`              | missing skills, rejected status            |
+| Info / applied | `bg-info-lightest`    | `text-info-foreground`    | applied status                            |
+| Neutral        | `bg-surface-secondary`| `text-text-secondary`     | unavailable, archived status              |
+| Complete       | `bg-success-light`    | `text-success-dark`       | completed status                          |
+
+Icon wells (circles used in card headers as decorative icons) use `rounded-full` with:
+- `bg-success-lightest text-success` — positive/match sections
+- `bg-accent-muted text-accent` — accent sections
+- `bg-surface-secondary text-text-muted` — neutral/description sections
+
+**Pattern notes:**
+Never use accent/purple tokens for negative or error states. Missing (gap) skills and rejected status use error tokens (`bg-error/10 text-error`). Accent/purple is reserved for interactive elements, primary actions, and decorative icon wells — never for failure or terminal-negative states. Skill chips (matched = success, missing = error) and status badges follow the shared `rounded-full` pill shape with consistent `px-3 py-1 text-xs font-medium` sizing. Match score badge in JobHeader is a slight exception: it uses `text-sm font-semibold` for visual prominence but keeps the same pill shape and success color tokens.

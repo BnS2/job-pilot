@@ -85,7 +85,7 @@ function formatSalary(job: AdzunaJob, country: AdzunaCountry): string | null {
   const symbol = getSalarySymbol(country);
 
   if (min !== null && max !== null) {
-    return `${symbol}${min}k - ${symbol}${max}k`;
+    return min === max ? `${symbol}${min}k` : `${symbol}${min}k - ${symbol}${max}k`;
   }
 
   if (min !== null) {

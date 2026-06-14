@@ -4,7 +4,7 @@ export default function Loading() {
   return (
     <div className="min-h-screen bg-background">
       <Navbar activePath="/find-jobs" fullWidth showCta={false} />
-      <main className="mx-auto flex max-w-[1440px] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-12">
+      <main className="mx-auto flex max-w-[1440px] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
         <section className="rounded-xl border border-border bg-surface p-6 shadow-sm">
           <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
             <div>

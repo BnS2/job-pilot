@@ -25,6 +25,18 @@ export type JobPilotInngestEvents = {
       mode?: "manual_search" | "profile_best_match";
     };
   };
+  "resume-extraction.requested": {
+    data: {
+      runId: string;
+      userId: string;
+    };
+  };
+  "resume-generation.requested": {
+    data: {
+      runId: string;
+      userId: string;
+    };
+  };
 };
 
 export const inngest = new Inngest({

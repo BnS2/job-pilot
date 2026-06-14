@@ -52,6 +52,7 @@ async function createResearchRun(
       .from("agent_runs")
       .insert([{
         user_id: userId,
+        run_type: "company_research",
         status: "running",
         job_title_searched: `company_research:${company ?? "unknown"}`,
         location_searched: title,

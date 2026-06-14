@@ -40,6 +40,17 @@ type GenerateResumeOptions = {
   runId: string | null;
 };
 
+class ResumeGenerationOutputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ResumeGenerationOutputError";
+  }
+}
+
+function isResumeGenerationOutputError(error: unknown): boolean {
+  return error instanceof ResumeGenerationOutputError;
+}
+
 const resumeJsonSchema = {
   type: "object",
   properties: {
@@ -188,6 +199,42 @@ ${JSON.stringify(profileFacts, null, 2)}
 `;
 }
 
+function extractJsonPayload(text: string): string {
+  const fencedMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const candidate = fencedMatch?.[1]?.trim() ?? text.trim();
+
+  if (candidate.startsWith("{") && candidate.endsWith("}")) {
+    return candidate;
+  }
+
+  const firstBrace = candidate.indexOf("{");
+  const lastBrace = candidate.lastIndexOf("}");
+
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return candidate.slice(firstBrace, lastBrace + 1);
+  }
+
+  return candidate;
+}
+
+function parseGeneratedResumeResponse(text: string | undefined): GeneratedResume {
+  const rawText = text?.trim();
+
+  if (!rawText) {
+    throw new ResumeGenerationOutputError("Gemini returned empty resume generation JSON.");
+  }
+
+  try {
+    return generatedResumeSchema.parse(JSON.parse(extractJsonPayload(rawText)));
+  } catch (error) {
+    if (error instanceof SyntaxError || error instanceof z.ZodError) {
+      throw new ResumeGenerationOutputError("Gemini returned malformed resume generation JSON.");
+    }
+
+    throw error;
+  }
+}
+
 async function generateResumeContent(profile: ProfileData): Promise<GeneratedResume> {
   const gemini = createGeminiClient();
   const modelAttempts = [GEMINI_TEXT_MODEL, GEMINI_TEXT_MODEL, GEMINI_FAST_MODEL];
@@ -207,11 +254,14 @@ async function generateResumeContent(profile: ProfileData): Promise<GeneratedRes
         },
       });
 
-      return generatedResumeSchema.parse(JSON.parse(response.text ?? "{}"));
+      return parseGeneratedResumeResponse(response.text);
     } catch (error) {
       lastError = error;
 
-      if (!isTransientGeminiError(error) || index === modelAttempts.length - 1) {
+      const retryable =
+        isTransientGeminiError(error) || isResumeGenerationOutputError(error);
+
+      if (!retryable || index === modelAttempts.length - 1) {
         throw error;
       }
 
@@ -243,13 +293,16 @@ export async function generateResumeFromProfile(
     console.error("[agent/resumeGenerator] Generation error:", error);
 
     const transient = isTransientGeminiError(error);
+    const malformedOutput = isResumeGenerationOutputError(error);
     await logAgentMessage(
       options.userId,
       options.runId,
       "error",
       transient
         ? "Resume generation failed because Gemini was temporarily unavailable."
-        : "Resume generation failed while creating structured resume content.",
+        : malformedOutput
+          ? "Resume generation failed because Gemini returned malformed structured resume content after retries."
+          : "Resume generation failed while creating structured resume content.",
     );
 
     if (transient) {
