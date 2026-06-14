@@ -103,22 +103,14 @@ async function ProfileContent({ email, userId }: ProfileContentProps) {
     work_authorization: "citizen",
     is_complete: false,
   };
-  const completeness = calculateCompleteness(baseProfile);
   const profile = {
     ...baseProfile,
-    is_complete: completeness.isComplete,
-    completionPercentage: completeness.completionPercentage,
-    missingFields: completeness.missingFields,
+    is_complete: calculateCompleteness(baseProfile).isComplete,
   };
 
   return (
     <>
-      <ProfileClient
-        completionPercentage={profile.completionPercentage}
-        isComplete={profile.is_complete}
-        missingFields={profile.missingFields}
-        profile={profile}
-      />
+      <ProfileClient profile={profile} />
     </>
   );
 }

@@ -25,8 +25,15 @@ type Props = {
 };
 
 export function JobStatusProvider({ children, initialStatus }: Props) {
-  const [status, setStatus] = useState<JobStatus>(initialStatus);
-  const handleStatusChange = useCallback((next: JobStatus) => setStatus(next), []);
+  const [state, setState] = useState<{ initialStatus: JobStatus; status: JobStatus }>(() => ({
+    initialStatus,
+    status: initialStatus,
+  }));
+  const status = state.initialStatus === initialStatus ? state.status : initialStatus;
+  const handleStatusChange = useCallback(
+    (next: JobStatus) => setState({ initialStatus, status: next }),
+    [initialStatus],
+  );
 
   return (
     <JobStatusContext.Provider value={{ status, setStatus: handleStatusChange }}>

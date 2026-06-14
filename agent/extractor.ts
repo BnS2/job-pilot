@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { isTransientGeminiError, wait } from "@/agent/geminiUtils";
+import { extractJsonPayload, isTransientGeminiError, wait } from "@/agent/geminiUtils";
 import { logAgentMessage } from "@/agent/logs";
 import { createGeminiClient, GEMINI_FAST_MODEL, GEMINI_TEXT_MODEL } from "@/lib/gemini";
 
@@ -195,24 +195,6 @@ Rules:
 Resume text:
 ${resumeText}
 `;
-}
-
-function extractJsonPayload(text: string): string {
-  const fencedMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  const candidate = fencedMatch?.[1]?.trim() ?? text.trim();
-
-  if (candidate.startsWith("{") && candidate.endsWith("}")) {
-    return candidate;
-  }
-
-  const firstBrace = candidate.indexOf("{");
-  const lastBrace = candidate.lastIndexOf("}");
-
-  if (firstBrace >= 0 && lastBrace > firstBrace) {
-    return candidate.slice(firstBrace, lastBrace + 1);
-  }
-
-  return candidate;
 }
 
 function parseExtractedProfileResponse(text: string | undefined): ExtractedProfileData {

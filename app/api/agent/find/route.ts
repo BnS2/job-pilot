@@ -286,7 +286,7 @@ export async function POST(request: NextRequest) {
       await capturePostHogServerEvent(userId, "job_search_started", {
         userId,
         jobTitle: searchJobTitle,
-        location: body.data.location,
+        location: resolvedLocation,
         ...(searchMode === "profile_best_match" ? { searchMode } : {}),
       });
     } catch (error) {
@@ -298,7 +298,7 @@ export async function POST(request: NextRequest) {
         name: "job-discovery.requested",
         data: {
           jobTitle: searchJobTitle,
-          location: body.data.location,
+          location: resolvedLocation,
           runId,
           userId,
           mode: searchMode,

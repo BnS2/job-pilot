@@ -5,23 +5,16 @@ import { useState } from "react";
 import { CompletionIndicator } from "@/components/profile/CompletionIndicator";
 import { ProfileForm } from "@/components/profile/ProfileForm";
 import { ResumeUpload } from "@/components/profile/ResumeUpload";
-import type { ProfileData } from "@/lib/utils";
+import { calculateCompleteness, type ProfileData } from "@/lib/utils";
 
 type Props = {
-  completionPercentage: number;
-  isComplete: boolean;
-  missingFields: string[];
   profile: ProfileData;
 };
 
-export function ProfileClient({
-  completionPercentage,
-  isComplete,
-  missingFields,
-  profile,
-}: Props) {
+export function ProfileClient({ profile }: Props) {
   const [profileDraft, setProfileDraft] = useState<ProfileData>(profile);
   const [profileFormVersion, setProfileFormVersion] = useState(0);
+  const completeness = calculateCompleteness(profileDraft);
 
   const applyExtractedProfile = (extractedProfile: ProfileData): void => {
     setProfileDraft((currentProfile) => ({
@@ -51,9 +44,9 @@ export function ProfileClient({
       </div>
       <aside className="order-1 flex flex-col gap-6 xl:order-2">
         <CompletionIndicator
-          completionPercentage={completionPercentage}
-          isComplete={isComplete}
-          missingFields={missingFields}
+          completionPercentage={completeness.completionPercentage}
+          isComplete={completeness.isComplete}
+          missingFields={completeness.missingFields}
         />
         <ResumeUpload
           userId={profileDraft.id ?? ""}

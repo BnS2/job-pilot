@@ -319,13 +319,20 @@ export async function POST(request: NextRequest) {
       typeof job.title === "string" ? job.title : null,
     );
 
+    if (!agentRunId) {
+      return NextResponse.json(
+        { success: false, error: "Could not start company research." },
+        { status: 500 },
+      );
+    }
+
     const { error: updateError } = await insforge.database
       .from("jobs")
       .update({
         company_research_status: "running",
         company_research_error: null,
         company_research_started_at: new Date().toISOString(),
-        company_research_run_id: null,
+        company_research_run_id: agentRunId,
       })
       .eq("id", jobId)
       .eq("user_id", userId);

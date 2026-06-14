@@ -1,7 +1,12 @@
 import { z } from "zod";
 
 import { fetchWithSafeRedirects, getSafeFetchUrl } from "@/agent/availability";
-import { getErrorMessage, isTransientGeminiError, wait } from "@/agent/geminiUtils";
+import {
+  extractJsonPayload,
+  getErrorMessage,
+  isTransientGeminiError,
+  wait,
+} from "@/agent/geminiUtils";
 import {
   companyResearchSchema,
   type CompanyResearchDossier,
@@ -17,6 +22,33 @@ import { capturePostHogServerEvent } from "@/lib/posthog-server";
 import type { ProfileData } from "@/lib/utils";
 
 const employerRedirectTimeoutMs = 5000;
+
+const researchWorkExperienceSchema = z.object({
+  company: z.string(),
+  title: z.string(),
+  startDate: z.string(),
+  endDate: z.string(),
+  currentlyWorking: z.boolean(),
+  responsibilities: z.string(),
+});
+
+const researchEducationSchema = z.object({
+  degree: z.string().optional(),
+  fieldOfStudy: z.string().optional(),
+  institution: z.string().optional(),
+  graduationYear: z.string().optional(),
+});
+
+const researchProfileSchema = z.object({
+  id: z.string().optional(),
+  current_title: z.string().nullable().optional(),
+  years_experience: z.number().nullable().optional(),
+  experience_level: z.string().nullable().optional(),
+  skills: z.array(z.string()).nullable().optional(),
+  industries: z.array(z.string()).nullable().optional(),
+  work_experience: z.array(researchWorkExperienceSchema).nullable().optional(),
+  education: researchEducationSchema.nullable().optional(),
+});
 
 export type ResearchJobRecord = {
   id: string;
@@ -386,24 +418,6 @@ ${JSON.stringify(profileFacts, null, 2)}
 	`;
 }
 
-function extractJsonPayload(text: string): string {
-  const fencedMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  const candidate = fencedMatch?.[1]?.trim() ?? text.trim();
-
-  if (candidate.startsWith("{") && candidate.endsWith("}")) {
-    return candidate;
-  }
-
-  const firstBrace = candidate.indexOf("{");
-  const lastBrace = candidate.lastIndexOf("}");
-
-  if (firstBrace >= 0 && lastBrace > firstBrace) {
-    return candidate.slice(firstBrace, lastBrace + 1);
-  }
-
-  return candidate;
-}
-
 function truncateSentence(value: string, fallback: string): string {
   const trimmed = value.trim().replace(/\s+/g, " ");
 
@@ -614,11 +628,25 @@ export async function loadCompanyResearchContext(
     return { success: false, error: "Profile not found." };
   }
 
+  const parsedProfile = researchProfileSchema.safeParse(profileData);
+
+  if (!parsedProfile.success) {
+    await logResearchMessage(
+      userId,
+      runId,
+      "error",
+      `Company research failed for ${job.company} because the saved profile has malformed fields.`,
+      jobId,
+    );
+    await finishResearchRun(userId, runId, "failed");
+    return { success: false, error: "Profile data is incomplete or invalid." };
+  }
+
   return {
     success: true,
     cachedDossier: null,
     job,
-    profile: profileData as ProfileData,
+    profile: parsedProfile.data,
   };
 }
 

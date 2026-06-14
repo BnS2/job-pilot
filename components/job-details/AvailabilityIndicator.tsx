@@ -245,14 +245,18 @@ export function AvailabilityIndicator({ jobId, company, title }: Props) {
   };
 
   const checkedLabel = lastCheckedAt ? relativeTime(lastCheckedAt) : null;
+  const tooltipId = `availability-tooltip-${jobId}`;
 
   return (
     <div className="relative" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
       <button
         aria-label="Check listing availability"
+        aria-describedby={showTooltip ? tooltipId : undefined}
         className="relative inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-md border border-border bg-surface shadow-sm transition-all hover:-translate-y-px hover:bg-surface-secondary hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 active:translate-y-0 active:shadow-sm disabled:cursor-not-allowed disabled:opacity-70"
         disabled={availabilityStatus === "checking"}
+        onBlur={handleMouseLeave}
         onClick={handleClick}
+        onFocus={handleMouseEnter}
         type="button"
       >
         {icon()}
@@ -261,8 +265,10 @@ export function AvailabilityIndicator({ jobId, company, title }: Props) {
       {showTooltip ? (
         <div
           className="absolute right-0 top-full z-20 w-72 pt-2"
+          id={tooltipId}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
+          role="tooltip"
         >
           <div className="flex items-start gap-3 rounded-xl border border-border bg-surface p-4 shadow-lg">
             <div className="mt-0.5 shrink-0">{icon()}</div>

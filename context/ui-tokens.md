@@ -231,9 +231,9 @@ Font family: **Inter** — import from Google Fonts or use next/font/google.
 
 ### Cards
 
-```
+```text
 background: bg-surface
-border: 1px solid var(--border)
+border: 1px solid var(--color-border)
 border-radius: 16px (rounded-2xl in Tailwind)
 padding: 24px (p-6)
 box-shadow: 0px 1px 3px rgba(0,0,0,0.1), 0px 1px 2px -1px rgba(0,0,0,0.1)
@@ -333,7 +333,7 @@ Dot size: 8px inner, 16px outer with white border
 
 ### Logo
 
-```
+```text
 background: linear-gradient(45deg, #7C5CFC 0%, #4A2EC5 100%)
 border-radius: 10px
 size: 36x36px
@@ -341,7 +341,7 @@ size: 36x36px
 
 ### Toast Notifications
 
-```
+```text
 position: bottom-right
 gap between toasts: 8px
 max visible at once: 3
@@ -350,7 +350,7 @@ font-size: 14px
 font-weight: 500
 font-family: Inter
 border-radius: 8px (rounded-md)
-border: 1px solid --border
+border: 1px solid var(--color-border)
 padding: 12px 16px
 max-width: 360px
 box-shadow: 0px 8px 24px color-mix(in srgb, var(--color-overlay) 14%, transparent)

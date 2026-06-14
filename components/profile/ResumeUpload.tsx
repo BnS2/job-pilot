@@ -182,8 +182,15 @@ export function ResumeUpload({
     }
 
     let cancelled = false;
+    let requestInFlight = false;
 
     const loadStatus = async (): Promise<void> => {
+      if (requestInFlight) {
+        return;
+      }
+
+      requestInFlight = true;
+
       try {
         const response = await fetch(
           `/api/resume/runs?runId=${encodeURIComponent(activeResumeRun.runId)}`,
@@ -282,6 +289,8 @@ export function ResumeUpload({
         setActiveResumeRun(null);
       } catch (error) {
         console.error("[components/profile/ResumeUpload] Resume run status error:", error);
+      } finally {
+        requestInFlight = false;
       }
     };
 

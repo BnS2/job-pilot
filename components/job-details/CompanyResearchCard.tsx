@@ -135,6 +135,7 @@ export function CompanyResearchCard({
   }
 
   const cancelledRef = useRef(false);
+  const finalizeTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!isRunning) {
@@ -151,7 +152,11 @@ export function CompanyResearchCard({
         const json: unknown = await response.json();
         const data = isResearchApiResponse(json) ? json : {};
 
-        if (cancelledRef.current || data.success !== true) {
+        if (cancelledRef.current) {
+          return;
+        }
+
+        if (data.success !== true) {
           handlePollFailure();
           return;
         }
@@ -177,12 +182,17 @@ export function CompanyResearchCard({
         if (parsedDossier.success && !isFinalizing) {
           setIsFinalizing(true);
           setFinalizingText(getQuirkyFinalizeText());
-          window.setTimeout(() => {
+          finalizeTimeoutRef.current = window.setTimeout(() => {
+            if (cancelledRef.current) {
+              return;
+            }
+
             setCurrentDossier(parsedDossier.data);
             setCurrentStatus("completed");
             setMessage("Research is ready.");
             setIsFinalizing(false);
             showResearchReadyToast();
+            finalizeTimeoutRef.current = null;
           }, 2000);
         }
       } catch (requestError) {
@@ -204,6 +214,10 @@ export function CompanyResearchCard({
       cancelledRef.current = true;
       window.clearTimeout(startId);
       window.clearInterval(intervalId);
+      if (finalizeTimeoutRef.current !== null) {
+        window.clearTimeout(finalizeTimeoutRef.current);
+        finalizeTimeoutRef.current = null;
+      }
     };
     // isFinalizing intentionally excluded — it triggers through state, not as a polling trigger
     // eslint-disable-next-line react-hooks/exhaustive-deps

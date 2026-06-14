@@ -12,6 +12,14 @@ type ProfileResumeRecord = {
   resume_pdf_key?: string | null;
 };
 
+function getRequiredEventString(value: unknown, name: string): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`Missing resume extraction event field: ${name}`);
+  }
+
+  return value;
+}
+
 function getFailureStatus(code: string): number {
   return code === "temporary_unavailable" ? 503 : 422;
 }
@@ -24,8 +32,8 @@ export const resumeExtraction = inngest.createFunction(
     triggers: { event: "resume-extraction.requested" },
   },
   async ({ event, step }) => {
-    const userId = String(event.data.userId);
-    const runId = String(event.data.runId);
+    const userId = getRequiredEventString(event.data.userId, "userId");
+    const runId = getRequiredEventString(event.data.runId, "runId");
 
     try {
       const profile = await step.run("load-profile-resume", async () => {
@@ -38,7 +46,7 @@ export const resumeExtraction = inngest.createFunction(
 
         if (error) {
           console.error("[inngest/resumeExtraction] Profile fetch error:", error);
-          return null;
+          throw new Error("Failed to load profile resume metadata.");
         }
 
         // InsForge rows are untyped at this boundary; the selected column is narrowed before use.

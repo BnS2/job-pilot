@@ -169,7 +169,9 @@ export function JobFilters({ qValues, match, selectedSearchRuns, sort, status }:
   const removeTextFilter = useCallback(
     (qValue: string): void => {
       const current = new URLSearchParams(Array.from(searchParams.entries()));
-      const nextQValues = current.getAll("q").filter((currentQ) => currentQ.trim() !== qValue);
+      const nextQValues = current
+        .getAll("q")
+        .filter((currentQ) => normalizeSearchValue(currentQ) !== qValue);
 
       current.delete("q");
       current.delete("page");
@@ -206,19 +208,13 @@ export function JobFilters({ qValues, match, selectedSearchRuns, sort, status }:
     [replaceWithQuery, searchParams],
   );
 
-  const clearAllTextFilters = useCallback((): void => {
+  const clearSearchFilters = useCallback((): void => {
     const current = new URLSearchParams(Array.from(searchParams.entries()));
     current.delete("q");
-    current.delete("page");
-    replaceWithQuery(current.toString());
-    setSearchVal("");
-  }, [replaceWithQuery, searchParams]);
-
-  const clearSearchRuns = useCallback((): void => {
-    const current = new URLSearchParams(Array.from(searchParams.entries()));
     current.delete("run");
     current.delete("page");
     replaceWithQuery(current.toString());
+    setSearchVal("");
   }, [replaceWithQuery, searchParams]);
 
   const hasFilters = qValues.length > 0 || selectedSearchRuns.length > 0;
@@ -355,10 +351,7 @@ export function JobFilters({ qValues, match, selectedSearchRuns, sort, status }:
             {chipCount > 1 ? (
               <button
                 className="inline-flex h-6 items-center justify-center rounded-md border border-border bg-surface px-2 text-xs font-medium leading-4 text-text-secondary hover:bg-surface-secondary hover:text-text-dark"
-                onClick={() => {
-                  if (qValues.length > 0) clearAllTextFilters();
-                  if (selectedSearchRuns.length > 0) clearSearchRuns();
-                }}
+                onClick={clearSearchFilters}
                 type="button"
               >
                 Clear search filters

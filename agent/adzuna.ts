@@ -11,7 +11,7 @@ import {
 import { createGeminiClient, GEMINI_FAST_MODEL, GEMINI_TEXT_MODEL } from "@/lib/gemini";
 import { createInsforgeAdmin } from "@/lib/insforge-admin";
 import { capturePostHogServerEvent } from "@/lib/posthog-server";
-import { MATCH_THRESHOLD, type ProfileData } from "@/lib/utils";
+import { MATCH_STRONG_THRESHOLD, type ProfileData } from "@/lib/utils";
 
 export type DiscoverJobsResult =
   | {
@@ -363,7 +363,7 @@ export async function discoverJobsFromAdzuna({
 
       jobsSaved++;
 
-      if (record.match_score >= MATCH_THRESHOLD) {
+      if (record.match_score >= MATCH_STRONG_THRESHOLD) {
         strongMatches++;
       }
 
@@ -646,7 +646,7 @@ export async function discoverJobsFromProfile({
 
       jobsSaved++;
 
-      if (record.match_score >= MATCH_THRESHOLD) {
+      if (record.match_score >= MATCH_STRONG_THRESHOLD) {
         strongMatches++;
       }
 

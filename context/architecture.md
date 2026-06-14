@@ -148,7 +148,7 @@ Revalidate or redirect
 
 ### Job Discovery (API Route + Inngest)
 
-```
+```text
 User clicks Find Jobs
         ↓
 API route in app/api/agent/find

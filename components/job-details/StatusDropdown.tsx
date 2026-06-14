@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 
 import { updateJobStatus } from "@/actions/jobs";
 import { useJobStatus } from "@/components/job-details/JobStatusProvider";
-import { type JobStatus, isJobStatus } from "@/lib/utils";
+import type { JobStatus } from "@/lib/utils";
 import { toast } from "@/lib/toast";
 
 type Transition = {
@@ -64,10 +64,6 @@ type Props = {
   title: string;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 export function StatusDropdown({ jobId, status, company, title }: Props) {
   const { setStatus } = useJobStatus();
   const [isOpen, setIsOpen] = useState(false);
@@ -108,34 +104,7 @@ export function StatusDropdown({ jobId, status, company, title }: Props) {
         setStatus(nextStatus);
 
         if (nextStatus === "active") {
-          try {
-            const res = await fetch("/api/agent/availability", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ jobId, force: true }),
-            });
-            const data: unknown = await res.json();
-            const parsedData = isRecord(data) ? data : {};
-            if (
-              parsedData.success === true &&
-              typeof parsedData.status === "string" &&
-              isJobStatus(parsedData.status)
-            ) {
-              setStatus(parsedData.status);
-            }
-            if (parsedData.status === "unavailable") {
-              toast.statusChange({
-                variant: "restored-unavailable",
-                title: "Restored to active \u2014 listing is unavailable",
-                subtitle,
-              });
-            } else {
-              toast.statusChange({ variant: "restored", title: "Restored to active", subtitle });
-            }
-          } catch (error) {
-            console.error("[components/job-details/StatusDropdown] Availability check error:", error);
-            toast.statusChange({ variant: "restored", title: "Restored to active", subtitle });
-          }
+          toast.statusChange({ variant: "restored", title: "Restored to active", subtitle });
         } else {
           const labelMap: Record<string, { label: string; variant: "applied" | "archived" | "rejected" | "completed" }> = {
             applied: { label: "Marked as Applied", variant: "applied" },
