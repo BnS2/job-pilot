@@ -210,13 +210,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (getTailorStatus(job.tailored_resume_status) === "running") {
-      return NextResponse.json({
-        success: true,
-        data: buildStatusResponse(job),
-      });
-    }
-
     const runId = await startResumeTailoringRun(
       userId,
       jobId,
@@ -239,12 +232,17 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", jobId)
       .eq("user_id", userId)
+      .neq("tailored_resume_status", "running")
       .select(
         "id,tailored_resume_key,tailored_resume_status,tailored_resume_error,tailored_resume_notes,tailored_resume_generated_at",
       )
       .maybeSingle();
 
     if (updateError || !updatedJob) {
+      if (!updateError && !updatedJob) {
+        await failAgentRun(userId, runId, "Resume tailoring is already running.");
+        return NextResponse.json({ success: true, data: buildStatusResponse(job) });
+      }
       console.error("[api/resume/tailor] Failed to mark tailoring running:", updateError);
       await failAgentRun(userId, runId, "Resume tailoring could not be started.");
       return NextResponse.json(
@@ -254,23 +252,10 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const eventResult = await inngest.send({
+      await inngest.send({
         name: "resume-tailoring.requested",
         data: { jobId, runId, userId },
       });
-      const eventId = eventResult.ids[0] ?? null;
-
-      if (eventId) {
-        const { error: runUpdateError } = await insforge.database
-          .from("jobs")
-          .update({ tailored_resume_run_id: eventId })
-          .eq("id", jobId)
-          .eq("user_id", userId);
-
-        if (runUpdateError) {
-          console.error("[api/resume/tailor] Failed to save Inngest event ID:", runUpdateError);
-        }
-      }
     } catch (error) {
       console.error("[api/resume/tailor] Failed to enqueue tailoring:", error);
       await failAgentRun(userId, runId, "Resume tailoring could not be started.");

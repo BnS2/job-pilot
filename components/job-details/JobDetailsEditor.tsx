@@ -97,11 +97,27 @@ export function JobDetailsEditor({ isOpen, onCancel, job }: Props) {
   function handleSave(): void {
     setError(null);
 
+    const title = form.title.trim();
+    const company = form.company.trim();
+
+    if (title.length < 2) {
+      const msg = "Title must be at least 2 characters.";
+      setError(msg);
+      toast.error(msg);
+      return;
+    }
+    if (company.length < 2) {
+      const msg = "Company must be at least 2 characters.";
+      setError(msg);
+      toast.error(msg);
+      return;
+    }
+
     startTransition(async () => {
       const result = await updateJobDetails({
         jobId: job.id,
-        title: form.title,
-        company: form.company,
+        title,
+        company,
         location: form.location,
         salary: form.salary,
         jobType: getJobType(form.jobType),

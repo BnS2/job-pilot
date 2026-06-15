@@ -85,8 +85,8 @@ function NotesList({ items }: { items: string[] }) {
 
   return (
     <ul className="mt-3 space-y-2">
-      {items.map((item) => (
-        <li className="text-sm font-medium leading-5 text-text-primary" key={item}>
+      {items.map((item, i) => (
+        <li className="text-sm font-medium leading-5 text-text-primary" key={i}>
           {item}
         </li>
       ))}
