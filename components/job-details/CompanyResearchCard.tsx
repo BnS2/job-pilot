@@ -78,6 +78,7 @@ export function CompanyResearchCard({
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [finalizingText, setFinalizingText] = useState("");
   const isRunning = currentStatus === "running" && !currentDossier && !isFinalizing;
+  const showProgressState = isPending || isRunning;
   const pollFailureCountRef = useRef(0);
 
   const showResearchReadyToast = (): void => {
@@ -224,7 +225,7 @@ export function CompanyResearchCard({
   }, [isRunning, jobId, company]);
 
   function getProgressStep(): number {
-    if (!isRunning || !startedAt) {
+    if ((!isRunning && !isPending) || !startedAt) {
       return 0;
     }
 
@@ -267,6 +268,7 @@ export function CompanyResearchCard({
   const handleResearch = async (): Promise<void> => {
     setIsPending(true);
     setMessage(null);
+    setStartedAt(Date.now());
     pollFailureCountRef.current = 0;
 
     try {
@@ -281,7 +283,6 @@ export function CompanyResearchCard({
       if (data.success === true) {
         if (data.status === "running") {
           setCurrentStatus("running");
-          setStartedAt(Date.now());
         } else {
           const parsedDossier = companyResearchSchema.safeParse(data.data);
           if (parsedDossier.success) {
@@ -475,16 +476,16 @@ export function CompanyResearchCard({
             </svg>
           </span>
           <p className="mt-5 text-sm font-semibold leading-5 text-text-primary">
-            {isRunning || isFinalizing ? "Research in progress" : "No research yet"}
+            {showProgressState || isFinalizing ? "Research in progress" : "No research yet"}
           </p>
           <p className="mt-2 max-w-[340px] text-sm font-medium leading-5 text-text-muted">
             {isFinalizing
               ? finalizingText
-              : isRunning
+              : showProgressState
                 ? getProgressMessage()
                 : `Company research for ${company} has not been generated yet.`}
           </p>
-          {isRunning || isFinalizing ? (
+          {showProgressState || isFinalizing ? (
             <div className="mt-6 grid w-full max-w-[480px] gap-3 sm:grid-cols-4">
               {[
                 "Discover",

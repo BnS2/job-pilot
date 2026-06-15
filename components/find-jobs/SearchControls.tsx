@@ -8,6 +8,7 @@ import { toast } from "@/lib/toast";
 
 const TRACKED_RUNS_STORAGE_KEY = "jobpilot.findJobs.trackedRuns";
 const MAX_TRACKED_RUNS = 4;
+const MIN_PASTED_JOB_TEXT_LENGTH = 180;
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -99,6 +100,11 @@ type TrackedRun = {
   searchMode: "manual_search" | "profile_best_match";
   sourceUrl?: string | null;
   providerLabel?: string | null;
+  jobId?: string | null;
+  importedJobTitle?: string | null;
+  importedCompany?: string | null;
+  errorCode?: string | null;
+  canRetryWithText?: boolean;
   status: RunPhase;
   jobsFound: number;
   jobsSaved: number;
@@ -140,6 +146,15 @@ function isStoredTrackedRun(value: unknown): value is TrackedRun {
     (!("providerLabel" in value) ||
       typeof value.providerLabel === "string" ||
       value.providerLabel === null) &&
+    (!("jobId" in value) || typeof value.jobId === "string" || value.jobId === null) &&
+    (!("importedJobTitle" in value) ||
+      typeof value.importedJobTitle === "string" ||
+      value.importedJobTitle === null) &&
+    (!("importedCompany" in value) ||
+      typeof value.importedCompany === "string" ||
+      value.importedCompany === null) &&
+    (!("errorCode" in value) || typeof value.errorCode === "string" || value.errorCode === null) &&
+    (!("canRetryWithText" in value) || typeof value.canRetryWithText === "boolean") &&
     "status" in value &&
     isRunPhase(value.status) &&
     "jobsFound" in value &&
@@ -189,6 +204,8 @@ export function SearchControls() {
   const [jobTitle, setJobTitle] = useState("");
   const [location, setLocation] = useState("");
   const [jobUrl, setJobUrl] = useState("");
+  const [jobPageText, setJobPageText] = useState("");
+  const [isTextImportOpen, setIsTextImportOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isImportingUrl, setIsImportingUrl] = useState(false);
@@ -287,6 +304,50 @@ export function SearchControls() {
     return null;
   }
 
+  function getSourceUrl(data: object | null): string | null {
+    if (data && "sourceUrl" in data && typeof data.sourceUrl === "string") {
+      return data.sourceUrl;
+    }
+
+    return null;
+  }
+
+  function getJobId(data: object | null): string | null {
+    if (data && "jobId" in data && typeof data.jobId === "string") {
+      return data.jobId;
+    }
+
+    return null;
+  }
+
+  function getImportedJobTitle(data: object | null): string | null {
+    if (data && "jobTitle" in data && typeof data.jobTitle === "string") {
+      return data.jobTitle;
+    }
+
+    return null;
+  }
+
+  function getImportedCompany(data: object | null): string | null {
+    if (data && "company" in data && typeof data.company === "string") {
+      return data.company;
+    }
+
+    return null;
+  }
+
+  function getErrorCode(data: object | null): string | null {
+    if (data && "errorCode" in data && typeof data.errorCode === "string") {
+      return data.errorCode;
+    }
+
+    return null;
+  }
+
+  function getCanRetryWithText(data: object | null): boolean {
+    return Boolean(data && "canRetryWithText" in data && data.canRetryWithText === true);
+  }
+
   function getRunProgressMessage(run: TrackedRun): string {
     if (run.runKind === "url_import") {
       const providerLabel = run.providerLabel ?? "job URL";
@@ -296,6 +357,10 @@ export function SearchControls() {
       }
 
       if (run.status === "completed") {
+        if (run.importedJobTitle && run.importedCompany) {
+          return `Imported ${run.importedJobTitle} at ${run.importedCompany} from ${providerLabel}.`;
+        }
+
         return run.jobsSaved > 0
           ? `Imported ${providerLabel} job.`
           : `${providerLabel} import completed, but no job was saved.`;
@@ -474,6 +539,19 @@ export function SearchControls() {
     }
   }
 
+  function retryUrlImportWithText(run: TrackedRun): void {
+    if (run.sourceUrl) {
+      setJobUrl(run.sourceUrl);
+    }
+
+    setIsTextImportOpen(true);
+    setError(null);
+  }
+
+  function viewImportedJob(jobId: string): void {
+    router.push(`/find-jobs/${jobId}`);
+  }
+
   useEffect(() => {
     const activeRuns = trackedRuns.filter(
       (run) => run.status === "initializing" || run.status === "running",
@@ -548,6 +626,12 @@ export function SearchControls() {
             const strongMatches = getStrongMatches(data);
             const statusMessage = getStatusMessage(data);
             const providerLabel = getProviderLabel(data);
+            const sourceUrl = getSourceUrl(data);
+            const jobId = getJobId(data);
+            const importedJobTitle = getImportedJobTitle(data);
+            const importedCompany = getImportedCompany(data);
+            const errorCode = getErrorCode(data);
+            const canRetryWithText = getCanRetryWithText(data);
 
             if (status === "running") {
               if (!cancelled) {
@@ -579,6 +663,12 @@ export function SearchControls() {
                           jobsSaved,
                           strongMatches,
                           providerLabel: providerLabel ?? item.providerLabel,
+                          sourceUrl: sourceUrl ?? item.sourceUrl,
+                          jobId: jobId ?? item.jobId,
+                          importedJobTitle: importedJobTitle ?? item.importedJobTitle,
+                          importedCompany: importedCompany ?? item.importedCompany,
+                          errorCode,
+                          canRetryWithText,
                           completedAt: item.completedAt ?? Date.now(),
                           statusMessage:
                             status === "failed"
@@ -599,7 +689,11 @@ export function SearchControls() {
                       : `"${run.jobTitle}"`;
                 if (status === "completed") {
                   if (run.runKind === "url_import") {
-                    toast.success(`Imported ${label} job.`);
+                    toast.success(
+                      importedJobTitle && importedCompany
+                        ? `Imported ${importedJobTitle} at ${importedCompany} from ${label}.`
+                        : `Imported ${label} job.`,
+                    );
                   } else if (strongMatches > 0) {
                     toast.success(`${label} found ${jobsFound} jobs, ${strongMatches} strong matches.`);
                   } else if (jobsSaved > 0) {
@@ -841,6 +935,13 @@ export function SearchControls() {
     }
 
     setIsImportingUrl(true);
+    const submittedPageText = isTextImportOpen ? jobPageText.trim() : "";
+
+    if (submittedPageText && submittedPageText.length < MIN_PASTED_JOB_TEXT_LENGTH) {
+      setIsImportingUrl(false);
+      setError("Paste more job listing text before importing.");
+      return;
+    }
 
     try {
       const response = await fetch("/api/agent/import-url", {
@@ -849,6 +950,7 @@ export function SearchControls() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          ...(submittedPageText ? { pageText: submittedPageText } : {}),
           url: submittedUrl,
         }),
       });
@@ -884,6 +986,11 @@ export function SearchControls() {
             searchMode: "manual_search",
             sourceUrl: submittedUrl,
             providerLabel,
+            jobId: null,
+            importedJobTitle: null,
+            importedCompany: null,
+            errorCode: null,
+            canRetryWithText: false,
             status: "initializing",
             jobsFound: 0,
             jobsSaved: 0,
@@ -900,6 +1007,8 @@ export function SearchControls() {
         }
 
         setJobUrl("");
+        setJobPageText("");
+        setIsTextImportOpen(false);
         return;
       }
 
@@ -1000,16 +1109,42 @@ export function SearchControls() {
           </span>
         </label>
 
-        <button
-          className="inline-flex h-12 min-w-40 items-center justify-center gap-2 rounded-md border border-border bg-surface px-6 text-sm font-medium leading-5 text-text-primary shadow-sm hover:bg-surface-secondary disabled:cursor-not-allowed disabled:opacity-70"
-          disabled={isSubmitting || isImportingUrl}
-          onClick={handleImportUrl}
-          type="button"
-        >
-          <LinkIcon className="h-5 w-5" />
-          {isImportingUrl ? "Importing..." : "Import URL"}
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            className="inline-flex h-12 min-w-32 items-center justify-center rounded-md border border-border bg-surface px-4 text-sm font-medium leading-5 text-text-primary shadow-sm hover:bg-surface-secondary disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={isSubmitting || isImportingUrl}
+            onClick={() => setIsTextImportOpen((current) => !current)}
+            type="button"
+          >
+            {isTextImportOpen ? "Hide Text" : "Paste Text"}
+          </button>
+
+          <button
+            className="inline-flex h-12 min-w-40 items-center justify-center gap-2 rounded-md border border-border bg-surface px-6 text-sm font-medium leading-5 text-text-primary shadow-sm hover:bg-surface-secondary disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={isSubmitting || isImportingUrl}
+            onClick={handleImportUrl}
+            type="button"
+          >
+            <LinkIcon className="h-5 w-5" />
+            {isImportingUrl ? "Importing..." : jobPageText.trim() ? "Import Text" : "Import URL"}
+          </button>
+        </div>
       </div>
+
+      {isTextImportOpen ? (
+        <label className="mt-4 block">
+          <span className="text-xs font-semibold uppercase leading-4 tracking-wide text-text-dark">
+            Job Text
+          </span>
+          <textarea
+            className="mt-2 min-h-40 w-full resize-y rounded-md border border-border bg-surface px-4 py-3 text-sm font-medium leading-5 text-text-primary shadow-sm outline-none placeholder:text-text-muted focus:border-accent focus:ring-1 focus:ring-accent"
+            maxLength={18_000}
+            onChange={(event) => setJobPageText(event.target.value)}
+            placeholder="Paste the job description text"
+            value={jobPageText}
+          />
+        </label>
+      ) : null}
 
       {error ? (
         <div
@@ -1027,6 +1162,14 @@ export function SearchControls() {
             const tone = getRunTone(run);
             const canDismiss = isTerminalRun(run.status);
             const canFilter = run.status === "completed" && run.runKind !== "url_import";
+            const canRetryWithText =
+              run.runKind === "url_import" &&
+              run.status === "failed" &&
+              run.canRetryWithText === true;
+            const canViewImportedJob =
+              run.runKind === "url_import" &&
+              run.status === "completed" &&
+              Boolean(run.jobId);
             const isActive = canFilter && getCurrentRunFilters().includes(run.runId);
 
             return (
@@ -1064,6 +1207,30 @@ export function SearchControls() {
                       type="button"
                     >
                       View results
+                    </button>
+                  ) : null}
+                  {canViewImportedJob && run.jobId ? (
+                    <button
+                      className="inline-flex h-8 items-center justify-center rounded-md bg-accent px-3 text-xs font-semibold leading-4 text-accent-foreground hover:bg-accent-dark"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        viewImportedJob(run.jobId as string);
+                      }}
+                      type="button"
+                    >
+                      View job
+                    </button>
+                  ) : null}
+                  {canRetryWithText ? (
+                    <button
+                      className="inline-flex h-8 items-center justify-center rounded-md bg-accent px-3 text-xs font-semibold leading-4 text-accent-foreground hover:bg-accent-dark"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        retryUrlImportWithText(run);
+                      }}
+                      type="button"
+                    >
+                      Paste text
                     </button>
                   ) : null}
                   {canDismiss ? (

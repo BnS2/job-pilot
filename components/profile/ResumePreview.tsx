@@ -5,14 +5,23 @@ import { useEffect, useRef, useState } from "react";
 type PdfJsModule = typeof import("pdfjs-dist");
 
 type Props = {
+  fileUrl?: string;
+  openHref?: string;
   resumePdfKey?: string | null;
   resumePdfUrl?: string | null;
+  title?: string;
 };
 
 type PreviewStatus = "loading" | "ready" | "error";
 type PdfLoadingTask = ReturnType<PdfJsModule["getDocument"]>;
 
-export function ResumePreview({ resumePdfKey, resumePdfUrl }: Props) {
+export function ResumePreview({
+  fileUrl = "/api/profile/resume",
+  openHref = fileUrl,
+  resumePdfKey,
+  resumePdfUrl,
+  title = "Resume Preview",
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [status, setStatus] = useState<PreviewStatus>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -35,7 +44,7 @@ export function ResumePreview({ resumePdfKey, resumePdfUrl }: Props) {
           return;
         }
 
-        const response = await fetch("/api/profile/resume", {
+        const response = await fetch(fileUrl, {
           cache: "no-store",
           credentials: "same-origin",
         });
@@ -105,14 +114,14 @@ export function ResumePreview({ resumePdfKey, resumePdfUrl }: Props) {
       void loadingTask?.destroy();
       void pdfDocument?.destroy();
     };
-  }, [resumePdfKey, resumePdfUrl]);
+  }, [fileUrl, resumePdfKey, resumePdfUrl]);
 
   return (
     <div className="mt-4 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
       <div className="flex items-center justify-between border-b border-border bg-surface-secondary px-4 py-3">
         <div>
           <p className="text-sm font-semibold leading-5 text-text-primary">
-            Resume Preview
+            {title}
           </p>
           {pageCount && pageCount > 1 ? (
             <p className="mt-1 text-xs font-medium leading-4 text-text-muted">
@@ -121,7 +130,7 @@ export function ResumePreview({ resumePdfKey, resumePdfUrl }: Props) {
           ) : null}
         </div>
         <a
-          href="/api/profile/resume"
+          href={openHref}
           target="_blank"
           rel="noreferrer"
           className="text-xs font-semibold leading-4 text-accent hover:underline"

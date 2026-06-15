@@ -6,6 +6,7 @@ import { jobUrlImport } from "@/inngest/functions/jobUrlImport";
 import { inngest } from "@/inngest/client";
 import { resumeExtraction } from "@/inngest/functions/resumeExtraction";
 import { resumeGeneration } from "@/inngest/functions/resumeGeneration";
+import { resumeTailoring } from "@/inngest/functions/resumeTailoring";
 
 export const runtime = "nodejs";
 
@@ -17,5 +18,6 @@ export const { GET, POST, PUT } = serve({
     jobUrlImport,
     resumeExtraction,
     resumeGeneration,
+    resumeTailoring,
   ],
 });

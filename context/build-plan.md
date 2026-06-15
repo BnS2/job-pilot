@@ -342,44 +342,6 @@ Add a profile-driven search shortcut to the Find Jobs page.
 - Reuse the existing tracked-run notices, completed-run filters, and active list refresh behavior.
 - If the user's profile is too incomplete to generate a useful query, show a human-readable prompt to complete the profile.
 
----
-
-### 19 URL Job Import
-
-Import a public job URL into the user's saved jobs without treating it as an Adzuna search.
-
-**Schema / migration:**
-
-- Keep `jobs.source` as the broad category: `search` or `url`
-- Add `jobs.source_provider text` for provider identity:
-  - Adzuna rows use `source_provider = 'adzuna'`
-  - Imported URL rows derive provider from hostname, such as `jobstreet`, `linkedin`, `indeed`, or `unknown`
-- Add `job_url_import` to the allowed `agent_runs.run_type` values
-- Backfill existing search rows to `source_provider = 'adzuna'`
-
-**Logic:**
-
-- Add `POST /api/agent/import-url` and status polling on the same route
-- Create `agent_runs` rows with `run_type = 'job_url_import'`
-- Send Inngest event `job-url-import.requested`
-- Validate only absolute `http` / `https` URLs
-- Block local/internal/private IPs, unsafe hostnames, unsafe redirects, non-text/HTML responses, oversized responses, and timeouts
-- Extract job details best-effort from fetched page text with Gemini structured output
-- Fail clearly if the page is unreachable, unsupported, unsafe, too large, or not confidently one job posting
-- Score imported jobs with the same profile-matching standard as Adzuna jobs
-- Save imported jobs as `source = 'url'`, deduped by normalized URL fingerprint for the same user
-
-**UI:**
-
-- Add a separate Job URL control to the Find Jobs search card
-- Keep Adzuna search and Best Match controls separate from URL import
-- Status copy must distinguish the workflow:
-  - Adzuna search: "Searching on Adzuna..."
-  - URL import: "Importing job from JobStreet..." or "Importing job URL..."
-- Find Jobs source badges show provider labels such as `Adzuna`, `JobStreet`, `LinkedIn`, or `URL`
-
----
-
 ## Phase 4 — Job Details Page
 
 ### 13 Job Details Page — Full UI
@@ -394,6 +356,8 @@ Build the complete job details page UI. Job data from DB is already available fr
 - AI Match Reasoning section — match reason paragraph from Gemini 3.5 Flash
 - Required Skills vs Your Profile — matched skills as green badges, missing skills as red/orange badges
 - Job Description section — description content from Adzuna
+- Job Details editor — allow correcting title, company, location, salary, URLs, description, responsibilities, requirements, benefits, and company context
+- Editing company/title/role/company context clears generated company research and tailored resume metadata so stale AI outputs are not shown after corrections
 - Company Research card — empty state with Research Company button. After research: structured dossier with company overview, tech stack, culture, why this role, interview prep
 - Apply Now button (links to redirect_url, opens in new tab)
 - Job status badge and lifecycle actions from Feature 12
@@ -659,7 +623,47 @@ Wire three dashboard charts to real InsForge data for current user. PostHog rema
 
 ---
 
-## Phase 6 — Job-Specific Application Materials
+## Phase 6 — Job URL Import & Application Materials
+
+### 19 URL Job Import
+
+Import a public job URL into the user's saved jobs without treating it as an Adzuna search.
+
+**Schema / migration:**
+
+- Keep `jobs.source` as the broad category: `search` or `url`
+- Add `jobs.source_provider text` for provider identity:
+  - Adzuna rows use `source_provider = 'adzuna'`
+  - Imported URL rows derive provider from hostname, such as `jobstreet`, `linkedin`, `indeed`, or `unknown`
+- Add `job_url_import` to the allowed `agent_runs.run_type` values
+- Backfill existing search rows to `source_provider = 'adzuna'`
+
+**Logic:**
+
+- Add `POST /api/agent/import-url` and status polling on the same route
+- Create `agent_runs` rows with `run_type = 'job_url_import'`
+- Send Inngest event `job-url-import.requested`
+- Validate only absolute `http` / `https` URLs
+- Block local/internal/private IPs, unsafe hostnames, unsafe redirects, non-text/HTML responses, oversized responses, and timeouts
+- Extract job details best-effort from fetched page text with Gemini structured output
+- Treat employer/company as the explicit hiring organization only; do not infer it from breadcrumbs, short codes, separators, or page fragments
+- Fail clearly if the page is unreachable, unsupported, unsafe, too large, or not confidently one job posting
+- If a browser-public job board blocks server-side automated access, expose a pasted job-text fallback that still saves the job against the original URL
+- Score imported jobs with the same profile-matching standard as Adzuna jobs
+- Save imported jobs as `source = 'url'`, deduped by normalized URL fingerprint for the same user
+
+**UI:**
+
+- Add a separate Job URL control to the Find Jobs search card
+- Keep Adzuna search and Best Match controls separate from URL import
+- Status copy must distinguish the workflow:
+  - Adzuna search: "Searching on Adzuna..."
+  - URL import: "Importing job from JobStreet..." or "Importing job URL..."
+- Find Jobs source badges show provider labels such as `Adzuna`, `JobStreet`, `LinkedIn`, or `URL`
+- Blocked URL import notices can open the Job Text fallback with the failed URL prefilled
+- Completed URL import notices show the imported job title and company and link directly to the saved Job Details page
+
+---
 
 ### 20 Tailored Resume for Job or Company
 
@@ -734,5 +738,5 @@ Generate a private resume PDF tailored to a specific saved job and company. This
 | Phase 3 — Find Jobs              | 5        |
 | Phase 4 — Job Details            | 2        |
 | Phase 5 — Dashboard              | 4        |
-| Phase 6 — Application Materials  | 1        |
+| Phase 6 — URL Import & Application Materials | 2        |
 | **Total**                        | **20**   |

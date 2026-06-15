@@ -336,7 +336,7 @@ Last updated: 2026-06-14
 | Accent usage     | `text-accent` upload icon, `bg-accent text-accent-foreground` extraction CTA |
 
 **Pattern notes:**
-Resume upload uses client-side file upload flow via the InsForge browser SDK. Renders as a bordered drag-and-drop dropzone with file validation (PDF only, <= 5MB) when no resume is uploaded. Dropzone icon is a token-colored cloud outline with a separate upward arrow inside a circular white icon well; keep the glyph large enough that it does not collapse into an umbrella-like mark. Swaps to an uploaded-card styling when a resume exists, displaying the filename link, a secondary Preview/Hide Preview toggle, and a token error-outline Delete button. The inline preview uses `ResumePreview`, which fetches `/api/profile/resume` with same-origin credentials and renders page 1 to a canvas with PDF.js (`pdfjs-dist/webpack.mjs`) instead of relying on the browser's native PDF iframe viewer. This avoids blank previews and forced downloads when the user's browser is configured to download PDFs. The preview panel is wrapped in `rounded-xl border border-border bg-surface shadow-sm` with a neutral toolbar, loading/error states, page-count helper text, and an "Open full size" link. The preview is open by default for active resumes and after new uploads, but can be collapsed without losing the uploaded resume. Upload persists the returned storage `url` and `key`; failed metadata writes remove the just-uploaded object before surfacing the error. The visible filename and full-size link open `/api/profile/resume` so private storage objects are downloaded through an authenticated app route rather than a direct object URL. Delete clears both profile references only after storage deletion succeeds. Generate Resume and Extract from Resume start Inngest background jobs and poll `/api/resume/runs` every 2.5s with an in-flight request guard, using inline token status banners plus bottom-right rich toasts for started/completed/failed states. Start-action failures toast the same human-readable server message shown inline, including session and configuration errors. Extraction remains draft-only: completed fields populate the profile form for review and require Save Profile before persistence. Generation completion updates the active resume metadata and refreshes `/profile`. The generation action is always available as a bordered secondary button and uses saved profile data. The extraction action appears only in the uploaded state and uses the accent primary button pattern. On wide Profile layouts this component lives in the right rail, so the uploaded-file row and footer actions stack vertically at `xl` to avoid cramped horizontal controls.
+Resume upload uses client-side file upload flow via the InsForge browser SDK. Renders as a bordered drag-and-drop dropzone with file validation (PDF only, <= 5MB) when no resume is uploaded. Dropzone icon is a token-colored cloud outline with a separate upward arrow inside a circular white icon well; keep the glyph large enough that it does not collapse into an umbrella-like mark. Swaps to an uploaded-card styling when a resume exists, displaying the filename link, a secondary Preview/Hide Preview toggle, and a token error-outline Delete button. The inline preview uses `ResumePreview`, which defaults to fetching `/api/profile/resume` with same-origin credentials and renders page 1 to a canvas with PDF.js (`pdfjs-dist/webpack.mjs`) instead of relying on the browser's native PDF iframe viewer. `ResumePreview` also accepts explicit `fileUrl`, `openHref`, and `title` props so job-scoped PDFs can reuse the same private canvas preview treatment. This avoids blank previews and forced downloads when the user's browser is configured to download PDFs. The preview panel is wrapped in `rounded-xl border border-border bg-surface shadow-sm` with a neutral toolbar, loading/error states, page-count helper text, and an "Open full size" link. The preview is open by default for active resumes and after new uploads, but can be collapsed without losing the uploaded resume. Upload persists the returned storage `url` and `key`; failed metadata writes remove the just-uploaded object before surfacing the error. The visible filename and full-size link open `/api/profile/resume` so private storage objects are downloaded through an authenticated app route rather than a direct object URL. Delete clears both profile references only after storage deletion succeeds. Generate Resume and Extract from Resume start Inngest background jobs and poll `/api/resume/runs` every 2.5s with an in-flight request guard, using inline token status banners plus bottom-right rich toasts for started/completed/failed states. Start-action failures toast the same human-readable server message shown inline, including session and configuration errors. Extraction remains draft-only: completed fields populate the profile form for review and require Save Profile before persistence. Generation completion updates the active resume metadata and refreshes `/profile`. The generation action is always available as a bordered secondary button and uses saved profile data. The extraction action appears only in the uploaded state and uses the accent primary button pattern. On wide Profile layouts this component lives in the right rail, so the uploaded-file row and footer actions stack vertically at `xl` to avoid cramped horizontal controls.
 
 ### Profile Client
 
@@ -396,7 +396,87 @@ Last updated: 2026-06-14
 | Accent usage     | `bg-accent text-accent-foreground`, `bg-accent-muted text-accent`, `bg-success-lightest text-success-foreground`, shared score meter thresholds |
 
 **Pattern notes:**
-Job Details is now composed from route-level data plus focused `components/job-details` presentation sections. Cards preserve the supplied design pattern: white surface, token border, 16px radius, 24px card padding, and small token-colored icon wells. Listing metadata renders as one `Listing details` card with a compact two-column details grid instead of four separate stat cards; values wrap with `break-words` so salary, location, job type, and date found stay readable without cramped truncation. Metadata labels use complete wording when space allows, such as `Salary Estimated` instead of `Salary Est.`. The lifecycle controls intentionally remain visible near Apply Now as Feature 12 integration; availability auto-refresh is invisible and calls the API route rather than importing agent logic into the page. JobHeader keeps the score badge but now adds the shared MatchScoreMeter below the header metadata so the score is readable against low/good/strong thresholds. CompanyResearchCard is a client component only for the trigger/polling behavior; it keeps the same section shell, uses a primary accent CTA for idle/retry states, a muted disabled treatment while running, border-top dividers for dossier sections, success-lightest skill tags for tech stack, and small accent source links with `break-all`.
+Job Details is now composed from route-level data plus focused `components/job-details` presentation sections. Cards preserve the supplied design pattern: white surface, token border, 16px radius, 24px card padding, and small token-colored icon wells. Listing metadata renders as one `Listing details` card with a compact two-column details grid instead of four separate stat cards; values wrap with `break-words` so salary, location, job type, and date found stay readable without cramped truncation. Metadata labels use complete wording when space allows, such as `Salary Estimated` instead of `Salary Est.`. The lifecycle controls intentionally remain visible near Apply Now as Feature 12 integration; availability auto-refresh is invisible and calls the API route rather than importing agent logic into the page. JobHeader keeps the score badge but now adds the shared MatchScoreMeter below the header metadata so the score is readable against low/good/strong thresholds. JobDetailsEditor follows the same card shell and provides the correction surface for imported listings. CompanyResearchCard is a client component only for the trigger/polling behavior; it keeps the same section shell, uses a primary accent CTA for idle/retry states, a muted disabled treatment while running, border-top dividers for dossier sections, success-lightest skill tags for tech stack, and small accent source links with `break-all`. TailoredResumeCard follows the same section shell and sits after company research so the role/company context is visible before generation.
+
+### Job Header Edit Button
+
+File: `components/job-details/JobHeader.tsx`
+Last updated: 2026-06-15
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-surface`                                                          |
+| Border           | `border border-border`                                                |
+| Border radius    | `rounded-md`                                                          |
+| Text — primary   | `text-text-primary`                                                   |
+| Text — secondary | none                                                                  |
+| Spacing          | `h-10 px-4 gap-2`, icon `h-4 w-4`                                    |
+| Hover state      | `hover:bg-surface-secondary`                                          |
+| Shadow           | `shadow-sm`                                                           |
+| Accent usage     | none                                                                  |
+
+**Pattern notes:**
+The edit button uses the standard secondary button pattern (border, white background, primary text, rounded-md, shadow-sm) with the standard hover state. It appears in the top-right of the JobHeader card when `onEditClick` is provided. The pencil icon follows the same `h-4 w-4` size as other button icons (logout, status dropdown). This replaces the previous standalone `JobDetailsEditor` read-mode card.
+
+### Job Header With Edit
+
+File: `components/job-details/JobHeaderWithEdit.tsx`
+Last updated: 2026-06-15
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | none (delegates to children)                                          |
+| Border           | none (delegates to children)                                          |
+| Border radius    | none (delegates to children)                                          |
+| Text — primary   | inherited from child components                                       |
+| Text — secondary | inherited from child components                                       |
+| Spacing          | none                                                                  |
+| Hover state      | none                                                                  |
+| Shadow           | none                                                                  |
+| Accent usage     | none                                                                  |
+
+**Pattern notes:**
+Orchestrator component managing `isEditing` state. In read mode, renders `JobHeader` (with pencil icon) + `JobInfoGrid`. In edit mode, replaces both with `JobDetailsEditor`. The transition is a direct card swap — no animation, no layout shift. This replaces the previous separate `JobHeader` + `JobInfoGrid` + `JobDetailsEditor` composition on the page.
+
+### Job Details Editor
+
+File: `components/job-details/JobDetailsEditor.tsx`
+Last updated: 2026-06-15
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-surface`, `bg-error/10` inline error                              |
+| Border           | `border border-border`, error `border-error/20`                       |
+| Border radius    | `rounded-xl` card, `rounded-md` inputs/buttons/error                  |
+| Text — primary   | `text-text-primary`, primary button `text-accent-foreground`          |
+| Text — secondary | `text-text-secondary`, labels `text-text-dark`, error `text-error`    |
+| Spacing          | `p-6`, header `flex flex-wrap items-center justify-between gap-3`, form `mt-6 grid gap-4 sm:grid-cols-2`, fields `mt-2 h-11 px-3`, textareas `min-h-28/32/36 px-4 py-3`, actions `gap-2` |
+| Hover state      | `hover:bg-surface-secondary`, `hover:bg-accent-dark`                  |
+| Shadow           | `shadow-sm`                                                           |
+| Accent usage     | `bg-accent text-accent-foreground`, focus `focus:border-accent focus:ring-1 focus:ring-accent` |
+
+**Pattern notes:**
+JobDetailsEditor is now a form-only component controlled by `isOpen` and `onCancel` props. When `isOpen` is false, it returns null. When open, it replaces the header and info grid cards. The read-mode card with "Edit details" button has been removed — that responsibility now lives in `JobHeader` via the pencil icon button and `JobHeaderWithEdit` orchestrator. The form edits title, company, location, salary, job type, apply/source URLs, job description, responsibilities, requirements, nice-to-have items, benefits, and company context. Multi-line list fields are newline-separated textareas so imported arrays can round-trip without custom chips. Saves call `updateJobDetails`, toast success/failure, refresh the route, and clear generated company research plus tailored resume metadata whenever title/company/role/company context changes.
+
+### Tailored Resume Card
+
+File: `components/job-details/TailoredResumeCard.tsx`
+Last updated: 2026-06-15
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-surface`, `bg-surface-secondary`, icon wells `bg-accent-muted` / `bg-surface-secondary` |
+| Border           | `border border-border`, header `border-b border-border`, notes divider `border-t border-border` |
+| Border radius    | `rounded-xl` card/preview shell, `rounded-md` buttons, `rounded-full` icon wells |
+| Text — primary   | `text-text-primary`, primary CTA `text-accent-foreground`             |
+| Text — secondary | `text-text-muted`, failure copy `text-error`                          |
+| Spacing          | `p-6`, generated row `p-5`, empty state `px-6 py-12`, `gap-3`, `gap-4`, `gap-5`, `mt-1`, `mt-2`, `mt-3`, `mt-4`, `mt-5`, `mt-6`, progress grid `max-w-[480px] sm:grid-cols-4` |
+| Hover state      | `hover:bg-accent-dark`, `hover:border-text-secondary hover:bg-surface-secondary` |
+| Shadow           | `shadow-sm`                                                           |
+| Accent usage     | `bg-accent text-accent-foreground` for first generation/open PDF, `bg-accent-muted text-accent` icon well and active progress bars |
+
+**Pattern notes:**
+TailoredResumeCard is the job-scoped application-materials surface. Empty and failed states show centered minimal copy and the header action button. Running state keeps the card in place, disables the header action, and shows four token progress stages: Load, Match, Write, Render. The card has a separate local starting state before server-confirmed `running` so the UI does not flicker between idle/completed and running while the start request and first poll race each other. Completed state shows a private `tailored-resume.pdf` row with an Open PDF link to `/api/resume/tailored/[jobId]`, concise tailoring notes split into Emphasized and Gap Framing columns, and the shared `ResumePreview` canvas renderer pointed at the same authenticated route. The Regenerate header action uses the standard secondary Job Details button pattern with border, hover border, medium text, and refresh icon. The card starts work through `/api/resume/tailor`, polls the same route with `jobId`, and uses rich bottom-right toasts for completed/failed status. It never links directly to InsForge Storage object URLs.
 
 ### Profile Page Shell
 
@@ -476,7 +556,7 @@ Last updated: 2026-06-15
 | Accent usage     | `bg-accent text-accent-foreground`, `text-success` success icon, `text-info` empty icon, `text-error` error icon |
 
 **Pattern notes:**
-Search controls match the supplied `find-jobs.png` card: uppercase compact labels, large rounded inputs, search icon in the job title input, and conditional status banners below the controls. Feature 10 converts this to a Client Component with controlled inputs, submit loading state, `POST /api/agent/find` wiring, a token-green success banner from the API response, a token-blue empty-result banner for zero Adzuna results, and a token-red human-readable error banner. Background search runs use per-term status rows below the controls while the existing results remain visible; optional locations are displayed as quoted values to match quoted search terms. Run rows persist in browser storage for the `/find-jobs` experience so active searches can resume polling when the user returns. Completed rows use green only when strong matches exist; weak/no-match completions stay blue and can be dismissed with a compact icon button. Completed rows are history/status rows, not active filter indicators: they expose `View results` to replace selected `run` params and dismiss that notice. Clicking the notice text toggles the run into/out of the active URL filter set (appends on add, removes on toggle-off); when a run is in the active filters, its notice gains a `border-l-2 border-l-accent` left-border indicator. Plain dismissal hides the notice and also removes the run from active filters if it was selected through the URL. Background run-status polling must never call the logout route or clear cookies; transient auth/backend failures keep the run active and retry. Best Match is a Find Jobs enhancement beside Find Jobs, styled as `bg-surface border border-border text-text-primary rounded-md` with a sparkle icon. Best Match skips the manual job title and derives search queries from the user's saved profile. Feature 19 adds a separate Job URL row with link icon, `type="url"` input, Import URL button, `/api/agent/import-url` polling, and provider-aware copy such as `Importing job from JobStreet`. URL import notices refresh results after completion but do not become search-run filters.
+Search controls match the supplied `find-jobs.png` card: uppercase compact labels, large rounded inputs, search icon in the job title input, and conditional status banners below the controls. Feature 10 converts this to a Client Component with controlled inputs, submit loading state, `POST /api/agent/find` wiring, a token-green success banner from the API response, a token-blue empty-result banner for zero Adzuna results, and a token-red human-readable error banner. Background search runs use per-term status rows below the controls while the existing results remain visible; optional locations are displayed as quoted values to match quoted search terms. Run rows persist in browser storage for the `/find-jobs` experience so active searches can resume polling when the user returns. Completed rows use green only when strong matches exist; weak/no-match completions stay blue and can be dismissed with a compact icon button. Completed rows are history/status rows, not active filter indicators: they expose `View results` to replace selected `run` params and dismiss that notice. Clicking the notice text toggles the run into/out of the active URL filter set (appends on add, removes on toggle-off); when a run is in the active filters, its notice gains a `border-l-2 border-l-accent` left-border indicator. Plain dismissal hides the notice and also removes the run from active filters if it was selected through the URL. Background run-status polling must never call the logout route or clear cookies; transient auth/backend failures keep the run active and retry. Best Match is a Find Jobs enhancement beside Find Jobs, styled as `bg-surface border border-border text-text-primary rounded-md` with a sparkle icon. Best Match skips the manual job title and derives search queries from the user's saved profile. Feature 19 adds a separate Job URL row with link icon, `type="url"` input, Import URL button, `/api/agent/import-url` polling, and provider-aware copy such as `Importing job from JobStreet`. URL import notices refresh results after completion but do not become search-run filters. Completed URL import notices show `Imported {title} at {company} from {provider}` when metadata is available and expose `View job` to open the saved Job Details page. Blocked automated URL imports can expose a `Paste text` retry action that prefills the failed URL and opens a `Job Text` textarea. The fallback textarea uses `mt-2 min-h-40 w-full resize-y rounded-md border border-border bg-surface px-4 py-3 text-sm font-medium leading-5 text-text-primary shadow-sm outline-none placeholder:text-text-muted focus:border-accent focus:ring-1 focus:ring-accent`; the URL row keeps `mt-5 grid gap-4 border-t border-border pt-5 lg:grid-cols-[1fr_auto] lg:items-end`, and the Paste Text / Import Text buttons use the existing secondary URL-import button treatment.
 
 ### Find Jobs Filter Toolbar
 
@@ -543,7 +623,7 @@ Find Jobs search controls start a background Inngest run instead of blocking unt
 ### Job Details Page
 
 File: `app/find-jobs/[id]/page.tsx`
-Last updated: 2026-06-14
+Last updated: 2026-06-15
 
 | Property         | Class                                                                 |
 | ---------------- | --------------------------------------------------------------------- |
@@ -558,7 +638,7 @@ Last updated: 2026-06-14
 | Accent usage     | `bg-accent text-accent-foreground` for Research/Apply CTAs, `bg-success-lightest text-success-foreground` match and skill badges, `bg-accent-muted text-error` rejected status badge, `bg-accent-muted text-accent` gap skills only |
 
 **Pattern notes:**
-The job details route follows `context/designs/job-details.png`: centered protected page, a wrapping top toolbar row with `BackToJobsLink` (left) and `JobStatusToolbar` (right, containing View Job Post, `StatusDropdown`, and conditional `AvailabilityIndicator`), summary card with company icon and a colored left-border accent strip per status, one readable Listing details card, AI match reasoning card, skills comparison card, job description card, company research empty state, and status-aware Apply CTA at the bottom. Lifecycle status is shown as a compact pill beside the match score. `StatusDropdown` renders a direct primary button with refresh icon when only one transition exists (e.g. rejected → Restore Active); multi-option statuses keep the dropdown. Action feedback uses inline token-styled success/error text that auto-dismisses after 3 seconds; do not use browser alerts for this workflow.
+The job details route follows `context/designs/job-details.png`: centered protected page, a wrapping top toolbar row with `BackToJobsLink` (left) and `JobStatusToolbar` (right, containing View Job Post, `StatusDropdown`, and conditional `AvailabilityIndicator`), summary card with company icon and a colored left-border accent strip per status, one readable Listing details card, AI match reasoning card, skills comparison card, job description card, company research card, tailored resume card, and status-aware Apply CTA at the bottom. Lifecycle status is shown as a compact pill beside the match score. `StatusDropdown` renders a direct primary button with refresh icon when only one transition exists (e.g. rejected → Restore Active); multi-option statuses keep the dropdown. Action feedback uses inline token-styled success/error text that auto-dismisses after 3 seconds; do not use browser alerts for this workflow.
 
 Company research progress now stays inside the card instead of refreshing the whole route. The empty state uses the existing icon well, primary heading, muted support copy, and token progress bars for four stages: Discover, Read, Synthesize, Finalize. Active stages use `bg-accent text-accent`; inactive stages use `bg-border-light text-text-muted`. Status polling reads `/api/agent/research?jobId=...` and only updates the card state. Repeated polling failures are surfaced as a retryable card failure with a rich status toast instead of leaving the running state silently stuck.
 

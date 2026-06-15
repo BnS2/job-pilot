@@ -20,6 +20,7 @@ import { MATCH_STRONG_THRESHOLD, type ProfileData } from "@/lib/utils";
 const IMPORT_TIMEOUT_MS = 12_000;
 const MAX_IMPORT_BYTES = 400_000;
 const MAX_TEXT_CHARS = 18_000;
+const MIN_TEXT_CHARS = 180;
 
 const jobExtractionSchema = z.object({
   isJobPosting: z.boolean(),
@@ -42,6 +43,7 @@ type JobExtraction = z.infer<typeof jobExtractionSchema>;
 type ImportUrlInput = {
   userId: string;
   url: string;
+  pageText?: string | null;
   profile: ProfileData;
   runId?: string | null;
 };
@@ -56,6 +58,8 @@ export type ImportJobUrlResult =
         providerLabel: string;
         matchScore: number;
         strongMatch: boolean;
+        title: string;
+        company: string;
         message: string;
       };
     }
@@ -64,6 +68,7 @@ export type ImportJobUrlResult =
       error: string;
       code:
         | "blocked_url"
+        | "blocked_automation"
         | "fetch_failed"
         | "unsupported_content"
         | "not_job"
@@ -166,6 +171,37 @@ function compactText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function preparePastedJobText(rawText: string): string {
+  const text = compactText(rawText).slice(0, MAX_TEXT_CHARS);
+
+  if (text.length < MIN_TEXT_CHARS) {
+    throw new UrlImportError(
+      "not_job",
+      "Paste more job listing text before importing.",
+    );
+  }
+
+  return text;
+}
+
+function isBotChallengeResponse(response: Response): boolean {
+  const challengeHeader = response.headers.get("cf-mitigated")?.toLowerCase();
+  const contentSecurityPolicy = response.headers.get("content-security-policy")?.toLowerCase() ?? "";
+
+  return (
+    challengeHeader === "challenge" ||
+    contentSecurityPolicy.includes("challenges.cloudflare.com")
+  );
+}
+
+function getFailureMessage(error: UrlImportError, providerLabel: string): string {
+  if (error.code === "blocked_automation") {
+    return `${providerLabel} blocks automated imports. Paste the job text to finish importing this listing.`;
+  }
+
+  return error.message;
+}
+
 function normalizeUrl(rawUrl: string): string {
   const url = new URL(rawUrl);
   url.hash = "";
@@ -185,6 +221,14 @@ function normalizeUrl(rawUrl: string): string {
   }
 
   return url.toString();
+}
+
+function normalizeUrlOrOriginal(rawUrl: string): string {
+  try {
+    return normalizeUrl(rawUrl);
+  } catch {
+    return rawUrl;
+  }
 }
 
 async function readResponseTextWithLimit(response: Response): Promise<{
@@ -266,6 +310,27 @@ async function fetchJobPageText(rawUrl: string): Promise<{
     const response = await fetchWithSafeRedirects(safeUrl.url, controller.signal);
 
     if (!response.ok) {
+      if (isBotChallengeResponse(response)) {
+        throw new UrlImportError(
+          "blocked_automation",
+          "That job board blocks automated imports, so JobPilot cannot read this URL directly.",
+        );
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        throw new UrlImportError(
+          "unsupported_content",
+          "That job URL is not publicly accessible to JobPilot.",
+        );
+      }
+
+      if (response.status === 408 || response.status === 429 || response.status >= 500) {
+        throw new UrlImportError(
+          "temporary_unavailable",
+          "That job site is temporarily unavailable. Please try importing this URL again in a moment.",
+        );
+      }
+
       throw new UrlImportError(
         "fetch_failed",
         response.status === 404
@@ -347,6 +412,31 @@ function parseExtractionResponse(text: string | undefined): JobExtraction {
   }
 }
 
+function cleanExtractedText(value: string | null): string | null {
+  if (!hasText(value)) {
+    return null;
+  }
+
+  const cleaned = compactText(value)
+    .replace(/^[\s\-–—|:•·]+/, "")
+    .replace(/[\s\-–—|:•·]+$/, "")
+    .trim();
+
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+function cleanExtraction(extraction: JobExtraction): JobExtraction {
+  return {
+    ...extraction,
+    title: cleanExtractedText(extraction.title),
+    company: cleanExtractedText(extraction.company),
+    location: cleanExtractedText(extraction.location),
+    salary: cleanExtractedText(extraction.salary),
+    aboutRole: cleanExtractedText(extraction.aboutRole),
+    aboutCompany: cleanExtractedText(extraction.aboutCompany),
+  };
+}
+
 async function extractJobDetails(pageText: string, sourceUrl: string): Promise<JobExtraction> {
   const gemini = createGeminiClient();
   const modelAttempts = [GEMINI_TEXT_MODEL, GEMINI_FAST_MODEL];
@@ -356,6 +446,10 @@ Extract a structured job posting from this public web page text.
 Rules:
 - Set isJobPosting false if the page is not primarily one specific job vacancy.
 - Do not invent facts. Use null or empty arrays for missing information.
+- title is the role name only. Remove employer names, list separators, and page navigation fragments from it.
+- company must be the hiring organization or employer named by the posting. Prefer explicit labels like employer, company, hiring organization, advertiser, posted by, or agency.
+- Never use page artifacts as company: source names, breadcrumbs, search labels, location labels, short codes, bullets, suffix fragments, or text that starts with punctuation such as "-SBA".
+- If the employer is not clearly present, set company to null instead of guessing from the title/header.
 - jobType must be fulltime, parttime, contract, or null.
 - aboutRole should summarize the role from the page in 1-3 paragraphs.
 - externalApplyUrl should only be a URL found in the page text, otherwise null.
@@ -383,7 +477,7 @@ ${pageText}
         },
       });
 
-      return parseExtractionResponse(response.text);
+      return cleanExtraction(parseExtractionResponse(response.text));
     } catch (error) {
       lastError = error;
 
@@ -548,13 +642,26 @@ function buildSourceFingerprint(normalizedUrl: string): string {
 export async function importJobFromUrl({
   userId,
   url,
+  pageText,
   profile,
   runId: existingRunId,
 }: ImportUrlInput): Promise<ImportJobUrlResult> {
   const runId = existingRunId ?? await startJobUrlImportRun(userId, url);
 
   try {
-    const page = await fetchJobPageText(url);
+    const pastedText = hasText(pageText) ? pageText : null;
+    const safeUrl = await getSafeFetchUrl(url);
+
+    if (!safeUrl.success) {
+      throw new UrlImportError("blocked_url", safeUrl.reason);
+    }
+
+    const page = pastedText
+      ? {
+          canonicalUrl: normalizeUrl(safeUrl.url.href),
+          text: preparePastedJobText(pastedText),
+        }
+      : await fetchJobPageText(url);
     const normalizedUrl = normalizeUrl(page.canonicalUrl);
     const provider = getJobSourceProvider(normalizedUrl);
     const providerLabel = getSourceProviderLabel(provider);
@@ -563,7 +670,9 @@ export async function importJobFromUrl({
       userId,
       runId,
       "info",
-      `URL import started for ${providerLabel}.`,
+      pastedText
+        ? `URL import started for ${providerLabel} using pasted job text.`
+        : `URL import started for ${providerLabel}.`,
     );
 
     const extraction = await extractJobDetails(page.text, page.canonicalUrl);
@@ -632,7 +741,7 @@ export async function importJobFromUrl({
       userId,
       runId,
       "success",
-      `Imported ${record.company} — ${record.title} from ${providerLabel} with a ${record.match_score}% match.`,
+      `Imported ${record.title} at ${record.company} from ${providerLabel} with a ${record.match_score}% match.`,
       jobId,
     );
     await completeAgentRunWithResult(
@@ -644,6 +753,8 @@ export async function importJobFromUrl({
         providerLabel,
         matchScore: record.match_score,
         strongMatch,
+        title: record.title,
+        company: record.company,
       },
       1,
     );
@@ -662,10 +773,14 @@ export async function importJobFromUrl({
         providerLabel,
         matchScore: record.match_score,
         strongMatch,
-        message: `Imported ${providerLabel} job with a ${record.match_score}% match.`,
+        title: record.title,
+        company: record.company,
+        message: `Imported ${record.title} at ${record.company} from ${providerLabel}.`,
       },
     };
   } catch (error) {
+    const fallbackProvider = getJobSourceProvider(url);
+    const fallbackProviderLabel = getSourceProviderLabel(fallbackProvider);
     const importError =
       error instanceof UrlImportError
         ? error
@@ -678,14 +793,30 @@ export async function importJobFromUrl({
               "fetch_failed",
               "That job URL could not be imported. Please try another public job page.",
             );
+    const failureMessage = getFailureMessage(importError, fallbackProviderLabel);
 
-    console.error("[agent/urlImport] Import failed:", error);
-    await logAgentMessage(userId, runId, "error", importError.message);
-    await failAgentRun(userId, runId, importError.message);
+    if (importError.code === "blocked_automation") {
+      console.warn("[agent/urlImport] Automated import blocked:", {
+        code: importError.code,
+        provider: fallbackProvider,
+        url,
+      });
+    } else {
+      console.error("[agent/urlImport] Import failed:", error);
+    }
+
+    await logAgentMessage(userId, runId, "error", failureMessage);
+    await failAgentRun(userId, runId, failureMessage, {
+      errorCode: importError.code,
+      canRetryWithText: importError.code === "blocked_automation",
+      sourceProvider: fallbackProvider,
+      providerLabel: fallbackProviderLabel,
+      sourceUrl: normalizeUrlOrOriginal(url),
+    });
 
     return {
       success: false,
-      error: importError.message,
+      error: failureMessage,
       code: importError.code,
     };
   }

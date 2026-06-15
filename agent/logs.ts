@@ -8,7 +8,8 @@ type AgentRunType =
   | "availability_check"
   | "resume_extraction"
   | "resume_generation"
-  | "job_url_import";
+  | "job_url_import"
+  | "resume_tailoring";
 
 type AgentRunResult = Record<string, unknown>;
 
@@ -18,6 +19,14 @@ export async function startResumeExtractionRun(userId: string): Promise<string |
 
 export async function startResumeGenerationRun(userId: string): Promise<string | null> {
   return startProfileAgentRun(userId, "resume_generation", "resume_generation");
+}
+
+export async function startResumeTailoringRun(
+  userId: string,
+  jobId: string,
+  label: string,
+): Promise<string | null> {
+  return startProfileAgentRun(userId, `resume_tailoring:${jobId}`, "resume_tailoring", label);
 }
 
 export async function startAvailabilityCheckRun(userId: string): Promise<string | null> {
@@ -93,6 +102,7 @@ async function startProfileAgentRun(
   userId: string,
   jobTitleSearched: string,
   runType: AgentRunType,
+  locationSearched: string | null = null,
 ): Promise<string | null> {
   try {
     const insforge = createInsforgeAdmin();
@@ -103,7 +113,7 @@ async function startProfileAgentRun(
         run_type: runType,
         status: "running",
         job_title_searched: jobTitleSearched,
-        location_searched: null,
+        location_searched: locationSearched,
         jobs_found: 0,
       }])
       .select("id")
@@ -187,6 +197,7 @@ export async function failAgentRun(
   userId: string,
   runId: string | null,
   errorMessage: string,
+  result?: AgentRunResult,
 ): Promise<void> {
   if (!runId) {
     return;
@@ -199,6 +210,7 @@ export async function failAgentRun(
       .update({
         status: "failed",
         error_message: errorMessage,
+        ...(result ? { result } : {}),
         completed_at: new Date().toISOString(),
       })
       .eq("id", runId)

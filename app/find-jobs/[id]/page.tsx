@@ -6,8 +6,7 @@ import { CompanyResearchCard } from "@/components/job-details/CompanyResearchCar
 import { JobActions } from "@/components/job-details/JobActions";
 import { JobDescriptionCard } from "@/components/job-details/JobDescriptionCard";
 import { JobDetailsError } from "@/components/job-details/JobDetailsError";
-import { JobHeader } from "@/components/job-details/JobHeader";
-import { JobInfoGrid } from "@/components/job-details/JobInfoGrid";
+import { JobHeaderWithEdit } from "@/components/job-details/JobHeaderWithEdit";
 import { JobStatusProvider } from "@/components/job-details/JobStatusProvider";
 import { JobStatusToolbar } from "@/components/job-details/JobStatusToolbar";
 import {
@@ -18,7 +17,9 @@ import {
 } from "@/components/job-details/jobDetailsFormatters";
 import { MatchReasoningCard } from "@/components/job-details/MatchReasoningCard";
 import { SkillsComparisonCard } from "@/components/job-details/SkillsComparisonCard";
+import { TailoredResumeCard } from "@/components/job-details/TailoredResumeCard";
 import { Navbar } from "@/components/layout/Navbar";
+import { tailoredResumeNotesSchema } from "@/agent/resumeTailor";
 import { companyResearchSchema } from "@/lib/company-research";
 import { createInsforgeServer } from "@/lib/insforge-server";
 
@@ -36,6 +37,15 @@ function toStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string");
 }
 
+function getTailoredResumeStatus(value: unknown): "idle" | "running" | "completed" | "failed" {
+  return value === "running" ||
+    value === "completed" ||
+    value === "failed" ||
+    value === "idle"
+    ? value
+    : "idle";
+}
+
 export default async function JobDetailsPage({ params }: JobDetailsPageProps) {
   const { id } = await params;
   const insforge = await createInsforgeServer();
@@ -50,7 +60,7 @@ export default async function JobDetailsPage({ params }: JobDetailsPageProps) {
   const { data: job, error } = await insforge.database
     .from("jobs")
     .select(
-      "id,company,title,location,salary,job_type,external_apply_url,source_url,about_role,match_score,match_reason,matched_skills,missing_skills,found_at,status,company_research,company_research_status,company_research_error",
+      "id,company,title,location,salary,job_type,external_apply_url,source_url,about_role,responsibilities,requirements,nice_to_have,benefits,about_company,match_score,match_reason,matched_skills,missing_skills,found_at,status,company_research,company_research_status,company_research_error,tailored_resume_key,tailored_resume_status,tailored_resume_error,tailored_resume_notes,tailored_resume_generated_at",
     )
     .eq("id", id)
     .eq("user_id", userId)
@@ -88,6 +98,11 @@ export default async function JobDetailsPage({ params }: JobDetailsPageProps) {
       typeof job.external_apply_url === "string" ? job.external_apply_url : null,
     source_url: typeof job.source_url === "string" ? job.source_url : null,
     about_role: typeof job.about_role === "string" ? job.about_role : null,
+    responsibilities: toStringArray(job.responsibilities),
+    requirements: toStringArray(job.requirements),
+    nice_to_have: toStringArray(job.nice_to_have),
+    benefits: toStringArray(job.benefits),
+    about_company: typeof job.about_company === "string" ? job.about_company : null,
     match_score: typeof job.match_score === "number" ? job.match_score : null,
     match_reason: typeof job.match_reason === "string" ? job.match_reason : null,
     matched_skills: toStringArray(job.matched_skills),
@@ -112,6 +127,18 @@ export default async function JobDetailsPage({ params }: JobDetailsPageProps) {
       : "idle";
   const researchError =
     typeof job.company_research_error === "string" ? job.company_research_error : null;
+  const tailoredResumeNotes = tailoredResumeNotesSchema.safeParse(
+    job.tailored_resume_notes,
+  );
+  const tailoredResumeStatus = getTailoredResumeStatus(job.tailored_resume_status);
+  const tailoredResumeError =
+    typeof job.tailored_resume_error === "string" ? job.tailored_resume_error : null;
+  const tailoredResumeGeneratedAt =
+    typeof job.tailored_resume_generated_at === "string"
+      ? job.tailored_resume_generated_at
+      : null;
+  const hasTailoredResume =
+    typeof job.tailored_resume_key === "string" && job.tailored_resume_key.length > 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -128,16 +155,30 @@ export default async function JobDetailsPage({ params }: JobDetailsPageProps) {
               title={title}
             />
           </div>
-          <JobHeader
+          <JobHeaderWithEdit
             company={company}
-            matchScore={matchScore}
-            title={title}
-          />
-          <JobInfoGrid
             foundAt={details.found_at}
+            job={{
+              id: details.id,
+              title,
+              company,
+              location: details.location ?? "",
+              salary: details.salary ?? "",
+              jobType: details.job_type ?? "",
+              externalApplyUrl: details.external_apply_url ?? "",
+              sourceUrl: details.source_url ?? "",
+              aboutRole: details.about_role ?? "",
+              responsibilities: details.responsibilities ?? [],
+              requirements: details.requirements ?? [],
+              niceToHave: details.nice_to_have ?? [],
+              benefits: details.benefits ?? [],
+              aboutCompany: details.about_company ?? "",
+            }}
             jobType={details.job_type}
             location={details.location}
+            matchScore={matchScore}
             salary={details.salary}
+            title={title}
           />
           <MatchReasoningCard matchReason={details.match_reason} />
           <SkillsComparisonCard
@@ -151,6 +192,16 @@ export default async function JobDetailsPage({ params }: JobDetailsPageProps) {
             error={researchError}
             jobId={details.id}
             status={researchStatus}
+          />
+          <TailoredResumeCard
+            company={company}
+            error={tailoredResumeError}
+            generatedAt={tailoredResumeGeneratedAt}
+            hasResume={hasTailoredResume}
+            jobId={details.id}
+            notes={tailoredResumeNotes.success ? tailoredResumeNotes.data : null}
+            status={tailoredResumeStatus}
+            title={title}
           />
           <JobActions
             applyUrl={applyUrl}
