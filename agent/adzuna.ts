@@ -48,6 +48,7 @@ type JobInsertRecord = {
   run_id: string | null;
   source_job_id: string;
   source: "search";
+  source_provider: "adzuna";
   source_url: string;
   external_apply_url: string;
   title: string;
@@ -129,6 +130,7 @@ function toJobRecord(
     run_id: runId,
     source_job_id: job.id,
     source: "search",
+    source_provider: "adzuna",
     source_url: job.redirectUrl,
     external_apply_url: job.redirectUrl,
     title: job.title,
@@ -231,6 +233,7 @@ async function saveOrRefreshJob(record: JobInsertRecord): Promise<string | null>
       .update({
         run_id: record.run_id,
         source_job_id: record.source_job_id,
+        source_provider: record.source_provider,
         source_url: record.source_url,
         external_apply_url: record.external_apply_url,
         title: record.title,

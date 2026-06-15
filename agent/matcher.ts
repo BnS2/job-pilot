@@ -3,7 +3,6 @@ import { z } from "zod";
 import { isTransientGeminiError, wait } from "@/agent/geminiUtils";
 import { logAgentMessage } from "@/agent/logs";
 import { createGeminiClient, GEMINI_FAST_MODEL, GEMINI_TEXT_MODEL } from "@/lib/gemini";
-import type { NormalizedAdzunaJob } from "@/lib/adzuna";
 import type { ProfileData } from "@/lib/utils";
 
 const jobMatchSchema = z.object({
@@ -14,6 +13,14 @@ const jobMatchSchema = z.object({
 });
 
 export type JobMatch = z.infer<typeof jobMatchSchema>;
+
+export type MatchableJob = {
+  title: string;
+  company: string;
+  location: string;
+  jobType: "fulltime" | "parttime" | "contract";
+  description: string;
+};
 
 class JobMatchOutputError extends Error {
   constructor(message: string) {
@@ -69,7 +76,7 @@ function parseJobMatchResponse(text: string | undefined): JobMatch {
   }
 }
 
-function buildMatchPrompt(job: NormalizedAdzunaJob, profile: ProfileData): string {
+function buildMatchPrompt(job: MatchableJob, profile: ProfileData): string {
   const profileFacts = {
     currentTitle: profile.current_title ?? "",
     experienceLevel: profile.experience_level ?? "",
@@ -96,7 +103,7 @@ Score how well this job matches this JobPilot user's saved profile.
 
 Rules:
 - Score 0-100 based on actual overlap between the role and profile.
-- Use the Adzuna description as a snippet, not a complete job description.
+- Use the job description as available listing text; do not assume it is complete.
 - Reward matching title direction, level, technical skills, domain fit, and location/remote fit.
 - Do not invent requirements, skills, or candidate experience.
 - Keep matchReason to one concise paragraph.
@@ -113,7 +120,7 @@ ${JSON.stringify(jobFacts, null, 2)}
 }
 
 async function generateJobMatch(
-  job: NormalizedAdzunaJob,
+  job: MatchableJob,
   profile: ProfileData,
 ): Promise<JobMatch> {
   const gemini = createGeminiClient();
@@ -152,7 +159,7 @@ async function generateJobMatch(
 }
 
 export async function matchJobToProfile(
-  job: NormalizedAdzunaJob,
+  job: MatchableJob,
   profile: ProfileData,
   options: MatchJobOptions,
 ): Promise<MatchJobResult> {

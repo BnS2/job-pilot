@@ -1,5 +1,5 @@
 -- =============================================================================
--- Feature 19 — Profile Best Match Button
+-- Find Jobs discovery enhancement — Profile Best Match Button
 -- Add search_mode to agent_runs for manual_search vs profile_best_match
 -- =============================================================================
 

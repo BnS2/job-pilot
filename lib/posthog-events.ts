@@ -30,6 +30,11 @@ export type PostHogEventProperties = {
     jobId: string;
     company: string;
   };
+  resume_tailored: {
+    userId: string;
+    jobId: string;
+    company: string;
+  };
   get_started_clicked: {
     source: "hero" | "bottom_cta";
   };

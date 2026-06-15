@@ -14,6 +14,8 @@ Job hunting is one of the most repetitive and time-consuming tasks a developer f
 
 JobPilot eliminates all of that preparation work. The agent finds the jobs, scores them intelligently against the user's actual skills, and researches each company so the user arrives at every application fully informed. The user just decides which ones to apply to and clicks.
 
+For high-interest roles, JobPilot can also generate a job-specific tailored resume. The tailored resume uses the user's saved profile/resume, the job posting, and the company research dossier when available, then produces a private PDF aligned to that company and role without changing the user's main profile data.
+
 ---
 
 ## Pages
@@ -121,6 +123,10 @@ Full width layout on all pages. No sidebar.
   - Empty state with Research Company button
   - After research: structured dossier showing company overview, tech stack, culture, why this role exists, interview prep talking points
   - Powered by Gemini 2.5 Flash URL Context + Google Search grounding over the company's public pages, with Gemini 3.5 Flash synthesis
+- Tailored Resume section:
+  - Empty state with Tailor Resume button
+  - Uses saved profile data, the base resume, the job posting, match gaps, and company research when available
+  - Generates a role/company-specific private PDF for this job without overwriting the user's base resume
 - Apply Now button — opens external apply URL in new tab
 
 ### Company Research Flow
@@ -132,6 +138,24 @@ Full width layout on all pages. No sidebar.
 - Gemini 3.5 Flash synthesizes all retrieved content, the job posting, and the user's profile into a structured dossier
 - Dossier displayed on job details page
 - If company pages cannot be retrieved — Gemini 3.5 Flash generates the best dossier from company name, job description, and profile alone
+
+### Job-Specific Resume Tailoring Flow
+
+- User clicks Tailor Resume on a job details page
+- Server verifies the job belongs to the current user and loads:
+  - Saved profile data
+  - Current base resume PDF / extracted profile fields when available
+  - Job description, match reason, matched skills, missing skills
+  - Company research dossier when available
+- Gemini 3.5 Flash rewrites resume content for that specific role and company:
+  - Professional summary aligned to the role
+  - Experience bullets emphasizing relevant evidence
+  - Skills ordering that mirrors the job requirements honestly
+  - Gap-aware framing that does not invent experience
+- `@react-pdf/renderer` renders the tailored resume PDF
+- Tailored PDF is uploaded to private InsForge Storage and saved against the job, not the profile
+- Job Details displays the tailored resume status, preview/download link, and regenerate action
+- The user's main `profiles` data and base `profiles.resume_pdf_*` values are never overwritten by tailoring
 
 ### Company Research Implementation Strategy
 
@@ -188,6 +212,14 @@ Do not build the browser-agent fallback until evidence shows Gemini Search + URL
 - Generated per job when user clicks Research Company
 - Never affects profile data or match score
 
+### Tailored Resume Data
+
+- Stored per job, either on `jobs` via tailored resume metadata columns or in a dedicated `job_resumes` table
+- Contains private InsForge Storage `url` and `key`, generation status, generated timestamp, and concise tailoring notes
+- Generated per job/company when the user clicks Tailor Resume
+- Never overwrites the user's base resume on `profiles`
+- Does not automatically recalculate the job's original match score
+
 ### Job Lifecycle Data
 
 - Stored on each `jobs` row using status and availability timestamps
@@ -206,6 +238,7 @@ Do not build the browser-agent fallback until evidence shows Gemini Search + URL
 - Profile form with all standard resume fields
 - Resume PDF upload with optional profile auto-fill via Gemini 3.5 Flash
 - Resume PDF generation from profile data using Gemini 3.5 Flash
+- Job/company-specific resume tailoring from the job details page using Gemini 3.5 Flash
 - Adzuna API job discovery — searches by title and location, category filtered to IT jobs
 - Job lifecycle management — active, unavailable, archived, applied, rejected, completed
 - Stale listing detection and soft-hiding from the default active jobs view
@@ -215,7 +248,7 @@ Do not build the browser-agent fallback until evidence shows Gemini Search + URL
 - Find Jobs page with search controls, filter, sort dropdown, pagination
 - Dashboard with stats bar, recent activity, analytics charts
 - PostHog event tracking throughout
-- PostHog analytics charts on dashboard
+- DB-first analytics charts on dashboard, with PostHog retained for event capture
 - Incomplete profile banner on dashboard
 - "Jobs by Adzuna" credit on all job listings
 
@@ -224,9 +257,7 @@ Do not build the browser-agent fallback until evidence shows Gemini Search + URL
 ## Features Out of Scope
 
 - Auto apply — agent does not fill or submit application forms
-- URL input for manual job import
 - Cover letter generation — tone preference is stored, but generation is not built in the current scope
-- Resume tailoring per job
 - Score recalculation after tailoring
 - Previous Job + Next Job navigation
 - Sidebar navigation — top navbar only
@@ -253,6 +284,7 @@ job_status_changed; // { userId, jobId, fromStatus, toStatus, reason }
 job_unavailable_detected; // { userId, jobId, source, reason }
 profile_completed; // { userId }
 company_researched; // { userId, jobId, company }
+resume_tailored; // { userId, jobId, company }
 ```
 
 ---
@@ -277,6 +309,7 @@ A developer or technical job seeker who:
 - Company Research Agent returns a useful dossier for well-known tech companies
 - Company Research Agent gracefully handles companies with minimal web presence
 - Job details page displays clean structured job information
+- User can generate a private tailored resume PDF for a specific job/company without losing their base resume
 - Dashboard analytics charts show meaningful data after several searches
 - All job data stored correctly in InsForge with full structured fields
 - PostHog events fire correctly for all key user actions

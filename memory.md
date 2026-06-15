@@ -1,75 +1,68 @@
-# Memory — Job Details Status UX Polish
+# Memory — URL Job Import (Feature 19) + UX Assessment
 
-Last updated: 2026-06-14
+Last updated: 2026-06-15
 
 ## What was built
 
-Reworked the job details page status actions for better discoverability and visual clarity:
+Feature 19 (URL Job Import) is complete but **untested**:
 
-1. **`lib/utils.ts`** — added `getJobStatusAccentClass()` returning `border-l-4 border-l-{status-token}` per non-active status. Changed rejected badge from `text-accent` to `text-error`.
+- `app/api/agent/import-url/route.ts` — POST (enqueue) + GET (poll status)
+- `agent/urlImport.ts` — `importJobFromUrl()` fetches & validates public HTTP(S) URLs, extracts with Gemini, scores against profile, dedupes by URL fingerprint, saves as `source='url'`
+- `inngest/functions/jobUrlImport.ts` — background workflow with `job-url-import.requested` event
+- `components/find-jobs/SearchControls.tsx` — `handleImportUrl()`, run tracking for `url_import` kind, polling via `/api/agent/import-url?runId=...`
+- `migrations/011_url_job_import.sql` — added `job_url_import` run_type, applied to InsForge
+- Agent logs support for `job_url_import` run type
+- Provider-aware source badges in `JobsTable` (`getSourceProviderLabel`)
+- Reusable URL validation helpers in the route
 
-2. **`components/job-details/StatusDropdown.tsx`** — when `STATUS_TRANSITIONS[status]` has only 1 entry (archived/rejected/completed → "Restore Active"), renders a direct primary button (`bg-accent text-accent-foreground`) with refresh icon instead of a dropdown. Auto-fires an availability check (`/api/agent/availability`) after restoring to active. Both success and error feedback messages auto-dismiss after 3 seconds via `useEffect` timeout.
-
-3. **`components/job-details/JobHeader.tsx`** — card `section` appends accent border class from `getJobStatusAccentClass()` (info for applied, warning for unavailable, muted for archived, error for rejected, success for completed).
-
-4. **`components/job-details/JobActions.tsx`** — slimmed to just the apply CTA via `getApplyCta()`: primary "Apply Now" for active, muted "Already Applied" for applied, muted "Position Unavailable" for unavailable, hidden (`null`) for archived/rejected/completed. Removed `StatusDropdown` and `CheckAvailabilityButton` (moved to toolbar).
-
-5. **`components/find-jobs/CheckAvailabilityButton.tsx`** — auto-dismiss messages after 3 seconds (same pattern as StatusDropdown).
-
-6. **`components/job-details/JobStatusToolbar.tsx`** (new) — thin client wrapper reading status from `JobStatusProvider` context, renders `StatusDropdown` + conditional `CheckAvailabilityButton` (only for active/unavailable).
-
-7. **`app/find-jobs/[id]/page.tsx`** — `BackToJobsLink` and `JobStatusToolbar` now share a `flex justify-between` row at the top inside `JobStatusProvider`. `JobActions` no longer takes `jobId`.
-
-8. **`context/ui-registry.md`** and **`context/progress-tracker.md`** — updated with all new patterns.
+No new components were created — the feature was integrated into existing `SearchControls` tracked-run polling and `JobsTable` source badges.
 
 ## Decisions made
 
-- Rejected accent color changed from primary purple (`accent`) to red (`error`) across card border and badge — purple is reserved for positive brand actions.
-- Restore-to-active auto-checks availability so the user doesn't have to manually click "Check Availability" right after restoring.
-- Status actions moved to top toolbar row alongside "Back to Jobs" — discoverable at eye level, no scrolling needed.
-- Apply CTA now reflects status: hidden for terminal states, muted for applied/unavailable, only active shows the primary link.
-
-## Problems solved
-
-- "Restore Active" required two clicks (open dropdown → click option) when it was the only option — now one click via direct button.
-- Non-active states (rejected, archived, completed) were visually identical to active on the card — now have a 4px left-border accent strip.
-- "Apply Now" button showed even on rejected/already-applied jobs — now status-aware.
-- "Status updated." and "Job listing appears to be active" messages persisted forever — now auto-dismiss after 3s.
+- URL imports are fully background — POST enqueues an Inngest event, returns immediately, and the SearchControls polls until completion
+- URL validation blocks local/internal/private hosts and unsafe redirects
+- Dedup by normalized URL fingerprint per user, so importing the same URL twice updates rather than duplicates
+- `source='url'` with `source_provider` set to host-derived label (e.g., `jobstreet`, `LinkedIn`, `indeed`)
 
 ## Current state
 
-- Recent toast-specific lint and TypeScript checks pass.
-- Full `npm run lint` is currently blocked by the existing `components/job-details/AvailabilityIndicator.tsx` `react-hooks/set-state-in-effect` warning/error.
-- All changes are uncommitted.
+- Import URL feature is wired end-to-end but has **not been tested** — no real URL has been run through the flow yet
+- The `/find-jobs` search card has the URL import row below a `border-t` divider with a `type="url"` input + "Import URL" button
+- All other Find Jobs features (search, Best Match, filters, lifecycle) are tested and working
+- `memory.md` was just overwritten with this session's context (was previously Feature 15 from June 15)
+
+## UX assessment — Find Jobs complexity
+
+The Find Jobs page surface has grown feature-rich across Phases 3 and 6, and early review suggests it may feel **complex** for users:
+
+1. **Three search entry points in one card** — users see Job Title+Find Jobs, Best Match, and Import URL in the same section. The Best Match and Import URL are secondary actions but still visually prominent alongside the primary search.
+
+2. **Blurred line between search and filter** — the search card triggers background Inngest runs (creating new job rows), while the filter toolbar below filters existing DB results. Completed search notices also double as interactive filter toggles (click to scope table to that run). This dual-purpose pattern is powerful but not obvious.
+
+3. **Many filter layers** — Status dropdown (7 options) + Match filter (3 options) + Sort (3 options) + text search (Enter-to-chip) + search-run filter chips = potentially overwhelming for a first-time user.
+
+4. **URL import feels tacked on** — separated by a `border-t` divider, the URL row sits below the main search form. A user might not notice it, or might confuse it with a general URL search.
+
+### Open UX questions
+
+- Should the three search modes be consolidated or better visually separated (e.g., tabs, collapsible sections)?
+- Should `Import URL` be more discoverable, or relocated to the job details page as a per-job alternative?
+- Does the dual filter/notice pattern need a tutorial or simpler affordance?
+- Should Best Match remain as a button or become a default option when no manual search is entered?
 
 ## Next session starts with
 
-1. Run `/remember restore` then read AGENTS/context files.
-2. Manually test the job details page for rejected, active, applied, and archived states:
-   - Verify accent border strip appears on non-active jobs.
-   - Verify "Restore Active" is a direct primary button (no dropdown) for rejected/archived/completed.
-   - Verify restoring to active auto-checks availability.
-   - Verify apply CTA changes per status.
-   - Verify messages auto-dismiss after 3s.
-3. Review and commit.
+1. Run `/remember restore`, then read `AGENTS.md` and the required context files before implementation.
+2. **Test the Import URL feature** — try importing a real public job URL (e.g., from JobStreet, LinkedIn, Indeed). Verify:
+   - `/api/agent/import-url` POST creates an `agent_runs` row and enqueues Inngest
+   - Inngest worker runs `importJobFromUrl` end to end
+   - Job appears in the table with correct source/provider badges
+   - Dedup works for the same URL
+   - Error states (invalid URL, no profile, config missing) return clear messages
+3. Fix any issues found during testing.
+4. Create a PR branch and commit the import URL feature.
+5. Reassess and potentially simplify the Find Jobs search UI based on UX concerns above.
 
 ## Open questions
 
-- None.
-
----
-
-## Follow-up — Toast Notification UX Polish
-
-Status-change toasts were visually too large and appeared top-center over the job details content. `lib/toast.tsx` now lets all status toasts inherit the root Sonner `bottom-right` placement, caps toast width at 360px, uses token-derived tonal backgrounds instead of raw color literals, and adds a subtle 4px inset status stripe for visibility without the alert-card feel. `app/layout.tsx` now enables a close button and uses a 24px desktop / 16px mobile viewport offset.
-
-Follow-up consistency pass: `toast.success()`, `toast.error()`, and `toast.info()` now render the same rich toast shell as `toast.statusChange()` instead of passing raw strings to Sonner. Generic toasts now include a token icon, primary message typography, the shared responsive width, tonal background, and inset status stripe while preserving the existing helper API at all call sites.
-
-Company research follow-up: `CompanyResearchCard` now uses `toast.statusChange()` for completion and research-start failures instead of the generic success/error helpers. The completion toast is titled `Company research ready`, shows the company as subtitle, and uses the slower completed/status duration so it does not feel smaller or faster than the job lifecycle toasts.
-
-Verification:
-
-- `npm run lint -- app/layout.tsx lib/toast.tsx` passes after the consistency pass.
-- `npx tsc --noEmit` passes.
-- `npm run build` passes when network access is allowed for the Next.js Google Font fetch.
-- Full `npm run lint` is currently blocked by the existing `components/job-details/AvailabilityIndicator.tsx` `react-hooks/set-state-in-effect` warning/error, which was not part of the toast revamp.
+- None currently — first priority is testing Import URL end to end.
