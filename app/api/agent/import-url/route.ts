@@ -13,6 +13,7 @@ export const runtime = "nodejs";
 
 const importUrlRequestSchema = z.object({
   url: z.string().trim().min(8).max(2000),
+  pageText: z.string().trim().min(180).max(18_000).optional(),
 });
 
 const runStatusRequestSchema = z.object({
@@ -69,6 +70,10 @@ function stringOrNull(value: unknown): string | null {
 
 function numberOrZero(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function booleanOrFalse(value: unknown): boolean {
+  return value === true;
 }
 
 function objectOrNull(value: unknown): Record<string, unknown> | null {
@@ -147,6 +152,8 @@ export async function GET(request: NextRequest) {
 
     const result = objectOrNull(run.result);
     const sourceProvider = stringOrNull(result?.sourceProvider);
+    const sourceUrl = stringOrNull(result?.sourceUrl) || String(run.job_title_searched ?? "");
+    const errorCode = stringOrNull(result?.errorCode);
     const providerLabel =
       stringOrNull(result?.providerLabel) ||
       getSourceProviderLabel(sourceProvider || getJobSourceProvider(String(run.job_title_searched ?? "")));
@@ -161,9 +168,14 @@ export async function GET(request: NextRequest) {
         jobsSaved,
         strongMatches: result?.strongMatch === true ? 1 : 0,
         jobId: stringOrNull(result?.jobId),
+        sourceUrl,
         sourceProvider,
         providerLabel,
+        jobTitle: stringOrNull(result?.title),
+        company: stringOrNull(result?.company),
         statusMessage: stringOrNull(run.error_message),
+        errorCode,
+        canRetryWithText: booleanOrFalse(result?.canRetryWithText),
         completedAt: stringOrNull(run.completed_at),
       },
     });
@@ -192,8 +204,15 @@ export async function POST(request: NextRequest) {
     const body = importUrlRequestSchema.safeParse(requestBody);
 
     if (!body.success) {
+      const pageTextIssue = body.error.issues.some((issue) => issue.path[0] === "pageText");
+
       return NextResponse.json(
-        { success: false, error: "Enter a complete job URL to import." },
+        {
+          success: false,
+          error: pageTextIssue
+            ? "Paste more job listing text before importing."
+            : "Enter a complete job URL to import.",
+        },
         { status: 400 },
       );
     }
@@ -283,6 +302,7 @@ export async function POST(request: NextRequest) {
         name: "job-url-import.requested",
         data: {
           runId,
+          pageText: body.data.pageText,
           url: body.data.url,
           userId,
         },
@@ -311,7 +331,9 @@ export async function POST(request: NextRequest) {
         strongMatches: 0,
         sourceProvider: provider,
         providerLabel,
-        message: `Importing job from ${providerLabel}.`,
+        message: body.data.pageText
+          ? `Importing pasted ${providerLabel} job.`
+          : `Importing job from ${providerLabel}.`,
       },
     });
   } catch (error) {

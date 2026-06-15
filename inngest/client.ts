@@ -44,6 +44,13 @@ export type JobPilotInngestEvents = {
       userId: string;
     };
   };
+  "resume-tailoring.requested": {
+    data: {
+      jobId: string;
+      runId: string;
+      userId: string;
+    };
+  };
 };
 
 export const inngest = new Inngest({

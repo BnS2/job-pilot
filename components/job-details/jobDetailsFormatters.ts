@@ -10,6 +10,11 @@ export type JobDetailsRecord = {
   external_apply_url: string | null;
   source_url: string | null;
   about_role: string | null;
+  responsibilities: string[] | null;
+  requirements: string[] | null;
+  nice_to_have: string[] | null;
+  benefits: string[] | null;
+  about_company: string | null;
   match_score: number | null;
   match_reason: string | null;
   matched_skills: string[] | null;

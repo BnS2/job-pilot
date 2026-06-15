@@ -7,8 +7,8 @@ Update this file after every completed feature. Any AI agent reading this should
 ## Current Status
 
 **Phase:** Phase 6 — Job-Specific Application Materials
-**Last completed:** 19 URL Job Import
-**Next:** 20 Tailored Resume for Job or Company
+**Last completed:** 20 Tailored Resume for Job or Company
+**Next:** —
 **In progress:** —
 
 ---
@@ -52,7 +52,7 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ### Phase 6 — Job-Specific Application Materials
 
-- [ ] 20 Tailored Resume for Job or Company
+- [x] 20 Tailored Resume for Job or Company
 
 ---
 
@@ -161,3 +161,10 @@ Update this file after every completed feature. Any AI agent reading this should
 - 2026-06-15 — Feature 18 corrected. Dashboard charts are DB-first: jobs found over time comes from completed job discovery runs, match score distribution comes from saved `jobs.match_score`, and company research activity comes from `jobs.company_researched_at`. PostHog remains for event capture only, so dashboard charts no longer require PostHog query credentials.
 - 2026-06-15 — Feature 19 complete. Added guarded URL Job Import with `/api/agent/import-url`, Inngest `job-url-import.requested`, and `agent_runs.run_type = 'job_url_import'`. URL imports accept only safe public HTTP(S) pages, block local/internal/private targets and unsafe redirects, bound fetch size/time, parse job details with Gemini structured output, score against the saved profile, dedupe by normalized URL fingerprint for the user, save as `source='url'` with `source_provider`, and show provider-aware Find Jobs badges/status copy. Added `migrations/011_url_job_import.sql`.
 - 2026-06-15 — Review finding verification pass complete. Fixed still-valid URL import, dashboard, Inngest retry, Recent Activity key, dashboard type/style, client URL validation, and memory branding findings while skipping stale or non-current items.
+- 2026-06-15 — Feature 20 complete. Added job-scoped tailored resume generation on Job Details. `migrations/012_tailored_resumes.sql` adds latest tailored resume metadata to `jobs`, allows `resume_tailoring` agent runs, and indexes tailored status. `/api/resume/tailor` authenticates the user, verifies job ownership, prevents duplicate running jobs, starts the Inngest `resume-tailoring.requested` workflow, and exposes job-scoped status polling. The worker loads the saved profile plus job/company context, generates truthful structured resume content with Gemini, renders the PDF with the existing resume document renderer, uploads to private `resumes/{user_id}/jobs/{job_id}/...`, saves the latest metadata on the job, and captures `resume_tailored`. `/api/resume/tailored/[jobId]` streams the private PDF only for the owning user. Job Details now renders `TailoredResumeCard` with empty/running/completed/failed states, notes, preview/download, and regenerate flow without mutating `profiles` or recalculating match score. Applied the migration to InsForge and verified with lint, TypeScript, and production build.
+- 2026-06-15 — URL import JobStreet failure handling fix complete. Job boards that return Cloudflare/bot challenges are now classified as unsupported automated imports with a clear user-facing message instead of a generic reachability failure. Temporary HTTP failures such as 408, 429, and 5xx are retryable, while expected non-retryable URL import failures no longer emit extra Inngest function errors after the `agent_runs` row has already been marked failed.
+- 2026-06-15 — URL import pasted text fallback complete. `/api/agent/import-url` now accepts optional `pageText`, passes it through the existing Inngest `job-url-import.requested` event, and the agent skips server fetch when pasted text is supplied while still validating the source URL, extracting/scoring with Gemini, deduping by URL fingerprint, and saving as `source='url'`. Blocked automated imports store structured run metadata so `/find-jobs` can show a `Paste text` retry action that pre-fills the failed URL and opens a token-styled Job Text textarea.
+- 2026-06-15 — URL import fallback hardening complete. Blocked automated imports now log a structured warning instead of a stack-level console error, failed run metadata includes provider and source URL details, status polling returns that source URL for resilient retry UI state, and the Inngest URL-import worker validates event payloads with Zod before loading profiles or calling agent logic.
+- 2026-06-15 — Tailored Resume UI flicker fix complete. Split `TailoredResumeCard` into local starting state vs server-confirmed running state so the card no longer starts polling before the POST request has marked the job as running. This prevents a brief idle/completed → running → idle/completed → running bounce after clicking Tailor Resume or Regenerate.
+- 2026-06-15 — Tailored Resume regenerate button polish complete. Regenerate now matches the standard Job Details secondary action pattern: bordered surface button, medium text weight, hover border treatment, and refresh icon.
+- 2026-06-15 — URL import detail-correction polish complete. Tightened the Gemini extraction prompt and cleanup so employer/company must be an explicit hiring organization rather than a page fragment like `-SBA`, URL import run results now persist title/company and Find Jobs success notices say what was imported with a direct `View job` action, and Job Details now includes an authenticated editor for correcting imported fields. Editing title/company/role/company context clears generated company research and tailored resume metadata so stale AI outputs do not remain attached to corrected jobs.
