@@ -5,10 +5,8 @@ import { BackToJobsLink } from "@/components/job-details/BackToJobsLink";
 import { CompanyResearchCard } from "@/components/job-details/CompanyResearchCard";
 import { JobActions } from "@/components/job-details/JobActions";
 import { JobDescriptionCard } from "@/components/job-details/JobDescriptionCard";
-import { JobDetailsEditor } from "@/components/job-details/JobDetailsEditor";
 import { JobDetailsError } from "@/components/job-details/JobDetailsError";
-import { JobHeader } from "@/components/job-details/JobHeader";
-import { JobInfoGrid } from "@/components/job-details/JobInfoGrid";
+import { JobHeaderWithEdit } from "@/components/job-details/JobHeaderWithEdit";
 import { JobStatusProvider } from "@/components/job-details/JobStatusProvider";
 import { JobStatusToolbar } from "@/components/job-details/JobStatusToolbar";
 import {
@@ -157,18 +155,9 @@ export default async function JobDetailsPage({ params }: JobDetailsPageProps) {
               title={title}
             />
           </div>
-          <JobHeader
+          <JobHeaderWithEdit
             company={company}
-            matchScore={matchScore}
-            title={title}
-          />
-          <JobInfoGrid
             foundAt={details.found_at}
-            jobType={details.job_type}
-            location={details.location}
-            salary={details.salary}
-          />
-          <JobDetailsEditor
             job={{
               id: details.id,
               title,
@@ -185,6 +174,11 @@ export default async function JobDetailsPage({ params }: JobDetailsPageProps) {
               benefits: details.benefits ?? [],
               aboutCompany: details.about_company ?? "",
             }}
+            jobType={details.job_type}
+            location={details.location}
+            matchScore={matchScore}
+            salary={details.salary}
+            title={title}
           />
           <MatchReasoningCard matchReason={details.match_reason} />
           <SkillsComparisonCard

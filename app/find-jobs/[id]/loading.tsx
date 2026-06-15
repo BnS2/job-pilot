@@ -10,10 +10,12 @@ export default function Loading() {
           <div className="flex items-start gap-4">
             <div className="h-12 w-12 rounded-xl bg-surface-secondary" />
             <div className="flex-1 space-y-3">
-              <div className="h-6 w-64 max-w-full rounded-full bg-border-light" />
+              <div className="flex items-start justify-between gap-3">
+                <div className="h-6 w-64 max-w-full rounded-full bg-border-light" />
+                <div className="h-10 w-20 shrink-0 rounded-md bg-surface-secondary" />
+              </div>
               <div className="h-4 w-40 rounded-full bg-border-light" />
             </div>
-            <div className="h-10 w-28 rounded-md bg-accent-muted" />
           </div>
         </section>
         {Array.from({ length: 4 }, (_, index) => (

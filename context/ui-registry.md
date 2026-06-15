@@ -398,6 +398,46 @@ Last updated: 2026-06-14
 **Pattern notes:**
 Job Details is now composed from route-level data plus focused `components/job-details` presentation sections. Cards preserve the supplied design pattern: white surface, token border, 16px radius, 24px card padding, and small token-colored icon wells. Listing metadata renders as one `Listing details` card with a compact two-column details grid instead of four separate stat cards; values wrap with `break-words` so salary, location, job type, and date found stay readable without cramped truncation. Metadata labels use complete wording when space allows, such as `Salary Estimated` instead of `Salary Est.`. The lifecycle controls intentionally remain visible near Apply Now as Feature 12 integration; availability auto-refresh is invisible and calls the API route rather than importing agent logic into the page. JobHeader keeps the score badge but now adds the shared MatchScoreMeter below the header metadata so the score is readable against low/good/strong thresholds. JobDetailsEditor follows the same card shell and provides the correction surface for imported listings. CompanyResearchCard is a client component only for the trigger/polling behavior; it keeps the same section shell, uses a primary accent CTA for idle/retry states, a muted disabled treatment while running, border-top dividers for dossier sections, success-lightest skill tags for tech stack, and small accent source links with `break-all`. TailoredResumeCard follows the same section shell and sits after company research so the role/company context is visible before generation.
 
+### Job Header Edit Button
+
+File: `components/job-details/JobHeader.tsx`
+Last updated: 2026-06-15
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | `bg-surface`                                                          |
+| Border           | `border border-border`                                                |
+| Border radius    | `rounded-md`                                                          |
+| Text — primary   | `text-text-primary`                                                   |
+| Text — secondary | none                                                                  |
+| Spacing          | `h-10 px-4 gap-2`, icon `h-4 w-4`                                    |
+| Hover state      | `hover:bg-surface-secondary`                                          |
+| Shadow           | `shadow-sm`                                                           |
+| Accent usage     | none                                                                  |
+
+**Pattern notes:**
+The edit button uses the standard secondary button pattern (border, white background, primary text, rounded-md, shadow-sm) with the standard hover state. It appears in the top-right of the JobHeader card when `onEditClick` is provided. The pencil icon follows the same `h-4 w-4` size as other button icons (logout, status dropdown). This replaces the previous standalone `JobDetailsEditor` read-mode card.
+
+### Job Header With Edit
+
+File: `components/job-details/JobHeaderWithEdit.tsx`
+Last updated: 2026-06-15
+
+| Property         | Class                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Background       | none (delegates to children)                                          |
+| Border           | none (delegates to children)                                          |
+| Border radius    | none (delegates to children)                                          |
+| Text — primary   | inherited from child components                                       |
+| Text — secondary | inherited from child components                                       |
+| Spacing          | none                                                                  |
+| Hover state      | none                                                                  |
+| Shadow           | none                                                                  |
+| Accent usage     | none                                                                  |
+
+**Pattern notes:**
+Orchestrator component managing `isEditing` state. In read mode, renders `JobHeader` (with pencil icon) + `JobInfoGrid`. In edit mode, replaces both with `JobDetailsEditor`. The transition is a direct card swap — no animation, no layout shift. This replaces the previous separate `JobHeader` + `JobInfoGrid` + `JobDetailsEditor` composition on the page.
+
 ### Job Details Editor
 
 File: `components/job-details/JobDetailsEditor.tsx`
@@ -416,7 +456,7 @@ Last updated: 2026-06-15
 | Accent usage     | `bg-accent text-accent-foreground`, focus `focus:border-accent focus:ring-1 focus:ring-accent` |
 
 **Pattern notes:**
-JobDetailsEditor is an inline correction surface on Job Details, not a separate page. Collapsed state is a compact card summarizing `title at company` with a secondary `Edit details` button. Expanded state keeps the same section shell and edits title, company, location, salary, job type, apply/source URLs, job description, responsibilities, requirements, nice-to-have items, benefits, and company context. Multi-line list fields are newline-separated textareas so imported arrays can round-trip without custom chips. Saves call `updateJobDetails`, toast success/failure, refresh the route, and clear generated company research plus tailored resume metadata whenever title/company/role/company context changes.
+JobDetailsEditor is now a form-only component controlled by `isOpen` and `onCancel` props. When `isOpen` is false, it returns null. When open, it replaces the header and info grid cards. The read-mode card with "Edit details" button has been removed — that responsibility now lives in `JobHeader` via the pencil icon button and `JobHeaderWithEdit` orchestrator. The form edits title, company, location, salary, job type, apply/source URLs, job description, responsibilities, requirements, nice-to-have items, benefits, and company context. Multi-line list fields are newline-separated textareas so imported arrays can round-trip without custom chips. Saves call `updateJobDetails`, toast success/failure, refresh the route, and clear generated company research plus tailored resume metadata whenever title/company/role/company context changes.
 
 ### Tailored Resume Card
 

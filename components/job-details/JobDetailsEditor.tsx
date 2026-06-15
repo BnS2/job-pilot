@@ -6,7 +6,7 @@ import { useState, useTransition } from "react";
 import { updateJobDetails } from "@/actions/jobs";
 import { toast } from "@/lib/toast";
 
-type EditableJobDetails = {
+export type EditableJobDetails = {
   id: string;
   title: string;
   company: string;
@@ -24,6 +24,8 @@ type EditableJobDetails = {
 };
 
 type Props = {
+  isOpen: boolean;
+  onCancel: () => void;
   job: EditableJobDetails;
 };
 
@@ -44,9 +46,8 @@ function getJobType(value: string): "fulltime" | "parttime" | "contract" | null 
     : null;
 }
 
-export function JobDetailsEditor({ job }: Props) {
+export function JobDetailsEditor({ isOpen, onCancel, job }: Props) {
   const router = useRouter();
-  const [isEditing, setIsEditing] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -90,7 +91,7 @@ export function JobDetailsEditor({ job }: Props) {
 
   function handleCancel(): void {
     resetForm();
-    setIsEditing(false);
+    onCancel();
   }
 
   function handleSave(): void {
@@ -121,33 +122,13 @@ export function JobDetailsEditor({ job }: Props) {
       }
 
       toast.success("Job details updated.");
-      setIsEditing(false);
+      onCancel();
       router.refresh();
     });
   }
 
-  if (!isEditing) {
-    return (
-      <section className="rounded-xl border border-border bg-surface p-6 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-semibold leading-6 text-text-primary">
-              Job Details
-            </h2>
-            <p className="mt-1 text-sm font-medium leading-5 text-text-secondary">
-              {job.title} at {job.company}
-            </p>
-          </div>
-          <button
-            className="inline-flex h-10 items-center justify-center rounded-md border border-border bg-surface px-4 text-sm font-medium leading-5 text-text-primary shadow-sm hover:bg-surface-secondary"
-            onClick={() => setIsEditing(true)}
-            type="button"
-          >
-            Edit details
-          </button>
-        </div>
-      </section>
-    );
+  if (!isOpen) {
+    return null;
   }
 
   return (
