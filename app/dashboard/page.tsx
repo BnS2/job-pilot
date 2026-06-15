@@ -468,11 +468,43 @@ export default async function DashboardPage() {
     redirect("/login?next=%2Fdashboard");
   }
 
-  const { data: profile, error: profileError } = await insforge.database
-    .from("profiles")
-    .select("*")
-    .eq("id", data.user.id)
-    .maybeSingle();
+  const [
+    { data: profile, error: profileError },
+    { data: jobsData, error: jobsError },
+    { data: runsData, error: runsError },
+    { data: jobDiscoveryRunsData, error: jobDiscoveryRunsError },
+  ] = await Promise.all([
+    insforge.database
+      .from("profiles")
+      .select("*")
+      .eq("id", data.user.id)
+      .maybeSingle(),
+    insforge.database
+      .from("jobs")
+      .select(
+        "company,title,status,match_score,found_at,last_seen_at,company_research,company_researched_at,unavailable_at,archived_at,applied_at,rejected_at,completed_at",
+      )
+      .eq("user_id", data.user.id),
+    insforge.database
+      .from("agent_runs")
+      .select(
+        "status,run_type,search_mode,jobs_found,job_title_searched,location_searched,completed_at",
+      )
+      .eq("user_id", data.user.id)
+      .eq("status", "completed")
+      .order("completed_at", { ascending: false })
+      .limit(12),
+    insforge.database
+      .from("agent_runs")
+      .select(
+        "status,run_type,search_mode,jobs_found,job_title_searched,location_searched,completed_at",
+      )
+      .eq("user_id", data.user.id)
+      .eq("status", "completed")
+      .eq("run_type", "job_discovery")
+      .order("completed_at", { ascending: false })
+      .limit(500),
+  ]);
 
   if (profileError) {
     console.error("[app/dashboard/page] DB error fetching profile:", profileError);
@@ -481,42 +513,14 @@ export default async function DashboardPage() {
   const isProfileComplete = profile
     ? calculateCompleteness(profile).isComplete
     : false;
-  const { data: jobsData, error: jobsError } = await insforge.database
-    .from("jobs")
-    .select(
-      "company,title,status,match_score,found_at,last_seen_at,company_research,company_researched_at,unavailable_at,archived_at,applied_at,rejected_at,completed_at",
-    )
-    .eq("user_id", data.user.id);
 
   if (jobsError) {
     console.error("[app/dashboard/page] DB error fetching dashboard jobs:", jobsError);
   }
 
-  const { data: runsData, error: runsError } = await insforge.database
-    .from("agent_runs")
-    .select(
-      "status,run_type,search_mode,jobs_found,job_title_searched,location_searched,completed_at",
-    )
-    .eq("user_id", data.user.id)
-    .eq("status", "completed")
-    .order("completed_at", { ascending: false })
-    .limit(12);
-
   if (runsError) {
     console.error("[app/dashboard/page] DB error fetching dashboard runs:", runsError);
   }
-
-  const { data: jobDiscoveryRunsData, error: jobDiscoveryRunsError } =
-    await insforge.database
-      .from("agent_runs")
-      .select(
-        "status,run_type,search_mode,jobs_found,job_title_searched,location_searched,completed_at",
-      )
-      .eq("user_id", data.user.id)
-      .eq("status", "completed")
-      .eq("run_type", "job_discovery")
-      .order("completed_at", { ascending: true })
-      .limit(500);
 
   if (jobDiscoveryRunsError) {
     console.error(

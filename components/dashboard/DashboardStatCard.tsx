@@ -14,7 +14,7 @@ export function DashboardStatCard({
   return (
     <article className="rounded-xl border border-border bg-surface p-6 shadow-sm">
       <p className="text-sm font-medium leading-5 text-text-secondary">{title}</p>
-      <p className="mt-2 text-[30px] font-semibold leading-9 text-text-primary">
+      <p className="mt-2 text-3xl font-semibold leading-9 text-text-primary">
         {value}
       </p>
       <div className="mt-3 flex items-center gap-3">

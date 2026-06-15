@@ -35,7 +35,10 @@ export function RecentActivity({ activities }: RecentActivityProps) {
               const isLast = index === activities.length - 1;
 
               return (
-                <li className="relative flex gap-5" key={`${activity.label}-${activity.time}`}>
+                <li
+                  className="relative flex gap-5"
+                  key={`${activity.label}-${activity.time}-${index}`}
+                >
                   {isLast ? null : (
                     <span
                       aria-hidden="true"

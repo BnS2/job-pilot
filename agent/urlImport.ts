@@ -219,6 +219,11 @@ async function readResponseTextWithLimit(response: Response): Promise<{
         break;
       }
     }
+
+    if (!truncated && bytesRead === MAX_IMPORT_BYTES) {
+      const { done, value } = await reader.read();
+      truncated = !done && Boolean(value);
+    }
   } finally {
     await reader.cancel().catch(() => undefined);
   }
@@ -547,10 +552,13 @@ export async function importJobFromUrl({
   runId: existingRunId,
 }: ImportUrlInput): Promise<ImportJobUrlResult> {
   const runId = existingRunId ?? await startJobUrlImportRun(userId, url);
-  const provider = getJobSourceProvider(url);
-  const providerLabel = getSourceProviderLabel(provider);
 
   try {
+    const page = await fetchJobPageText(url);
+    const normalizedUrl = normalizeUrl(page.canonicalUrl);
+    const provider = getJobSourceProvider(normalizedUrl);
+    const providerLabel = getSourceProviderLabel(provider);
+
     await logAgentMessage(
       userId,
       runId,
@@ -558,7 +566,6 @@ export async function importJobFromUrl({
       `URL import started for ${providerLabel}.`,
     );
 
-    const page = await fetchJobPageText(url);
     const extraction = await extractJobDetails(page.text, page.canonicalUrl);
     validateExtraction(extraction);
 
@@ -579,7 +586,6 @@ export async function importJobFromUrl({
       throw new UrlImportError(matchResult.code, matchResult.error);
     }
 
-    const normalizedUrl = normalizeUrl(page.canonicalUrl);
     const now = new Date().toISOString();
     const record: ImportedJobRecord = {
       user_id: userId,

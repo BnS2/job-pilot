@@ -22,7 +22,7 @@ No new components were created — the feature was integrated into existing `Sea
 - URL imports are fully background — POST enqueues an Inngest event, returns immediately, and the SearchControls polls until completion
 - URL validation blocks local/internal/private hosts and unsafe redirects
 - Dedup by normalized URL fingerprint per user, so importing the same URL twice updates rather than duplicates
-- `source='url'` with `source_provider` set to host-derived label (e.g., `jobstreet`, `linkedin`, `indeed`)
+- `source='url'` with `source_provider` set to host-derived label (e.g., `jobstreet`, `LinkedIn`, `indeed`)
 
 ## Current state
 

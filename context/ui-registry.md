@@ -428,7 +428,7 @@ Last updated: 2026-06-15
 | Background       | page `bg-background`, cards `bg-surface`                                                  |
 | Border           | `border border-border`, recent activity header `border-b border-border`, incomplete banner `border-warning/20` |
 | Border radius    | `rounded-xl` for cards, `rounded-sm` for stat trend badges, `rounded-full` for activity dots |
-| Text — primary   | `text-text-primary`, stat numbers `text-[30px] font-semibold leading-9`                   |
+| Text — primary   | `text-text-primary`, stat numbers `text-3xl font-semibold leading-9`                      |
 | Text — secondary | `text-text-secondary`, `text-text-muted` for helper text, chart axes, and timestamps       |
 | Spacing          | page `max-w-[1440px] gap-6 px-4 py-8 sm:px-6 lg:px-8`, dashboard body `grid items-start gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.75fr)]`, cards `p-6`, stat grid `gap-6`, chart title-to-canvas `mt-5`, chart canvases `h-[260px]` / `h-[250px]`, activity list `px-6 py-7 space-y-8` |
 | Hover state      | none                                                                                      |

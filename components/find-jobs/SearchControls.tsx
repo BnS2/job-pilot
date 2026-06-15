@@ -826,13 +826,21 @@ export function SearchControls() {
   async function handleImportUrl(): Promise<void> {
     setError(null);
 
-    if (jobUrl.trim().length < 8) {
-      setError("Enter a complete job URL to import.");
+    const submittedUrl = jobUrl.trim();
+
+    try {
+      const parsedUrl = new URL(submittedUrl);
+
+      if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+        setError("Please enter a valid public job URL.");
+        return;
+      }
+    } catch {
+      setError("Please enter a valid public job URL.");
       return;
     }
 
     setIsImportingUrl(true);
-    const submittedUrl = jobUrl.trim();
 
     try {
       const response = await fetch("/api/agent/import-url", {

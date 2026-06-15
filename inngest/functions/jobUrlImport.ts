@@ -1,3 +1,5 @@
+import { NonRetriableError } from "inngest";
+
 import { importJobFromUrl } from "@/agent/urlImport";
 import { inngest } from "@/inngest/client";
 import { createInsforgeAdmin } from "@/lib/insforge-admin";
@@ -45,6 +47,10 @@ export const jobUrlImport = inngest.createFunction(
       });
 
       if (!result.success) {
+        if (result.code !== "temporary_unavailable") {
+          throw new NonRetriableError(result.error);
+        }
+
         throw new Error(result.error);
       }
 
